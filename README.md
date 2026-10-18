@@ -24,7 +24,7 @@ Every view is URL-addressable (`?view=explore&compare=2001,2085&range=7d&metric=
 - **EA Statutory Main River Map** (WFS): simplified to `dist/data/main-rivers.geojson`.
 - Base map © OpenStreetMap contributors; optional radar © RainViewer; search via postcodes.io and Nominatim (on submit only).
 
-Rebuild the static reference files with `python research/build_reference.py`.
+Rebuild the static reference files with `python research/build_reference.py` (checked by `research/check_reference.py`). This runs automatically every Monday at 05:17 UTC via `.github/workflows/refresh-data.yml`: it commits only when the data changed and passed the checks, then triggers a tested redeploy. It can also be run by hand from the Actions tab.
 
 ### Honesty rules built into the code
 - No reading, threshold, warning or forecast is invented. The typical range is EA metadata and is always described as *not* a flood-warning threshold; the EA does not publish warning trigger levels through this API, so none are shown.
