@@ -1,5 +1,6 @@
 # Weekly refresh of the static reference data (EA Hydrology daily archive and
-# EA Statutory Main River Map). Commits only when the data changed, then
+# EA Statutory Main River Map). Commits only when the river data changed
+# (the build script ignores retrieval timestamps when comparing), then
 # triggers the Pages workflow, which re-runs the tests before deploying.
 name: Weekly data refresh
 
