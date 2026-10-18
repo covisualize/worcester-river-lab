@@ -1,5 +1,60 @@
 # Worcester River Lab
 
+**Live River Severn intelligence for Worcester** — a static, no-build web app (served from `dist/`) built on Environment Agency open data. It shows the latest verified river levels, official flood warnings, nearby gauges, an interactive map, 26 years of history and explainable charts. It does **not** forecast floods.
+
+## Milestone 4: interactive intelligence dashboard
+
+`dist/index.html` is the new dashboard. The original milestone 1–3 page (observation desk, research snapshot explorer, forecasting experiment) is preserved unchanged in function at `dist/lab.html` ("Research lab" in the navigation).
+
+### Views
+| View | What it does |
+|---|---|
+| **Overview** | Diglis level with plain-English summary, trend and typical-range chips, animated gauge against EA reference levels, official warning card, six KPI cards (hover details, sparklines, click-through), timeline (24 h / 7 d / 30 d / custom dates, annotations, Bewdley comparison, CSV), seven nearby Severn & Teme gauges. |
+| **Map** | Leaflet map: live gauge markers coloured by typical-range band, EA Statutory Main Rivers, EA flood-warning polygons coloured by live status, EA rain gauges (24 h totals), optional RainViewer radar, place/postcode/station search, reset, full screen, station detail panel. |
+| **Analysis** | (1) multi-station comparison in stage / change / % of typical range / derived mAOD; (2) level gauge with EA stageScale table; (3) typical-range comparison bars; (4) rate of change (cm/h); (5) rainfall vs river level; (6) a clearly labelled *simulation* (linear what-if, never a forecast). |
+| **Explore** | Pick stations, dates and measures; click to pin notes; automatic annotations (peak, low, fastest rise/fall); playable/scrubbable animation; linked mini-map with two-way highlighting; insight list; shareable URL; CSV. |
+| **History** | EA Hydrology daily maxima since 2000: long-term chart, largest independent events (≥14 days apart), peak-aligned event overlay, year calendar heatmap, quality flags. |
+| **Flood intelligence** (drawer) | Official warnings within 40 km with messages and GOV.UK links, observed changes at all gauges, verified reference levels, historical comparison, data confidence & freshness, official guidance and Floodline. |
+
+Every view is URL-addressable (`?view=explore&compare=2001,2085&range=7d&metric=range&notes=…`). Keyboard: `1`–`5` switch views, `R` refreshes, `F` opens flood intelligence, `Esc` closes it. Light/dark themes; `prefers-reduced-motion` disables animation.
+
+### Data sources (all checked live before integration)
+- **EA real-time flood-monitoring API** (Beta, OGL v3): station metadata incl. `stageScale` (typical range, highest recent, max/min on record, stage datum), 15-minute level readings (~4 weeks retained), tipping-bucket rainfall, `/id/floods` warnings, flood areas and polygons. CORS-enabled, no key. Polled every 5 minutes while visible; incremental refresh fetches only recent hours.
+- **EA Hydrology API** (quality-flagged archive): 15-minute data for custom date ranges older than four weeks (≤62 days per request) and daily max/min since 2000 (snapshot in `dist/data/archive-daily.json`).
+- **EA Statutory Main River Map** (WFS): simplified to `dist/data/main-rivers.geojson`.
+- Base map © OpenStreetMap contributors; optional radar © RainViewer; search via postcodes.io and Nominatim (on submit only).
+
+Rebuild the static reference files with `python research/build_reference.py`.
+
+### Honesty rules built into the code
+- No reading, threshold, warning or forecast is invented. The typical range is EA metadata and is always described as *not* a flood-warning threshold; the EA does not publish warning trigger levels through this API, so none are shown.
+- "Derived mAOD" = stage + EA `stageScale.datum` (documented by the EA as the gauge datum on OS datum), labelled as derived.
+- Changes need a real reading within 30 minutes of the comparison time; rate of change needs readings ~1 h apart (±10 min); gaps > 30 min break chart lines; rain totals use only complete hours. No interpolation anywhere.
+- Status pill and banners distinguish live, delayed (> 2 h), failed-refresh (cached) and offline-snapshot modes. Offline falls back to the shipped, timestamped snapshot with a prominent warning.
+- All displayed times use Europe/London (GMT/BST); CSV exports carry UTC plus UK local time.
+
+### Code structure (`dist/js/`)
+`config.js` (IDs, conventions) · `api.js` (fetching, caching, de-duplication, timeouts, fallback) · `data.js` (pure calculations & UK-time formatting) · `store.js` (state ↔ URL) · `live.js` (refresh scheduling & status) · `charts.js` (pure ECharts option builders + SVG gauge/sparklines) · `ui.js` (DOM helpers) · `views/*.js` (one module per view) · `main.js` (bootstrap & routing). Libraries: ECharts 5.6.0 and Leaflet 1.9.4, vendored into `dist/vendor/` by `npm run vendor` (no CDN, no build step).
+
+### Run & test
+```
+npm install            # dev only: libraries to vendor + Playwright
+npm run serve          # http://localhost:8080
+npm test               # 24 unit tests (data, URL state, chart builders) + milestone 3 explorer check
+npm run test:e2e       # headless Chromium: 15 checks incl. offline fallback and mobile layout
+```
+The end-to-end test serves `dist/` through request interception and answers EA calls from `tests/fixtures/ea.json` (real responses captured once) with a fixed clock, so it is deterministic and offline. Its flood alert is a labelled test fixture and is never shipped.
+
+### Deployment
+`dist/` is a complete static site, so any static host works. The existing `.openai/hosting.json` is unchanged. Ready-made configs:
+- **GitHub Pages** — `.github/workflows/pages.yml` runs the tests and then publishes `dist/` on every push to `main`. One-time setup: *Settings → Pages → Source: GitHub Actions*. On a free GitHub plan the repository must be public.
+- **Vercel** — `vercel.json` (import the repo at vercel.com/new; no settings needed).
+- **Netlify** — `netlify.toml` (import the repo at app.netlify.com; no settings needed).
+
+---
+
+## Milestone 1: observation desk (now `lab.html`)
+
 First milestone: one-gauge observation dashboard for Diglis (EA station 2085), with 24-hour, 3-day and 7-day views, CSV export and a timestamped fallback snapshot. It is not a flood forecasting or warning service.
 
 ## Run

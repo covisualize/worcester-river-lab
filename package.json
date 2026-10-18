@@ -1,0 +1,19 @@
+{
+  "name": "worcester-river-lab",
+  "version": "4.0.0",
+  "private": true,
+  "description": "Worcester River Lab: River Severn monitoring and flood intelligence dashboard (static site served from dist/).",
+  "type": "module",
+  "scripts": {
+    "vendor": "node scripts/vendor.mjs",
+    "serve": "node scripts/serve.mjs",
+    "test": "node --test tests/unit/*.test.js && node research/check-explorer.cjs",
+    "test:e2e": "node tests/e2e/smoke.mjs",
+    "check": "npm test && npm run test:e2e"
+  },
+  "devDependencies": {
+    "echarts": "5.6.0",
+    "leaflet": "1.9.4",
+    "playwright": "1.56.1"
+  }
+}

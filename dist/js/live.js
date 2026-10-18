@@ -1,0 +1,117 @@
+// Live data service: owns station metadata, recent readings and warnings,
+// schedules polite refreshes and degrades to the saved snapshot when offline.
+import { RULES, STATIONS, PRIMARY, RAIN_GAUGES } from './config.js';
+import * as api from './api.js';
+import { time, latest } from './data.js';
+
+export function createLive() {
+  const target = new EventTarget();
+  let timer = null;
+  let refreshing = null;
+
+  const live = {
+    stations: STATIONS.map(s => api.normaliseStation(null, s)),
+    byId: {},
+    series: {},        // id -> last ~25 h of readings
+    floods: null,      // { fetchedAt, items }
+    floodsError: null,
+    status: { mode: 'loading', updatedAt: null, error: null, snapshotAt: null },
+
+    on(type, fn) { target.addEventListener(type, e => fn(e.detail)); },
+    emit(type, detail) { target.dispatchEvent(new CustomEvent(type, { detail })); },
+
+    station(id) { return live.byId[id] || live.stations.find(s => s.id === id); },
+    primary() { return live.station(PRIMARY); },
+    latestOf(id) { return latest(live.series[id] || []) || live.station(id)?.latest || null; },
+
+    async refresh({ manual = false } = {}) {
+      if (refreshing) return refreshing;
+      live.status = { ...live.status, mode: live.status.updatedAt ? live.status.mode : 'loading', refreshing: true };
+      live.emit('status', live.status);
+      refreshing = (async () => {
+        const since = Date.now() - 25 * time.HOUR;
+        const [stations, floods] = await Promise.allSettled([api.getStations(), api.getFloods()]);
+        if (stations.status === 'fulfilled') {
+          live.stations = stations.value;
+          live.byId = Object.fromEntries(live.stations.map(s => [s.id, s]));
+        }
+        if (floods.status === 'fulfilled') { live.floods = floods.value; live.floodsError = null; }
+        else live.floodsError = floods.reason?.message || 'Warnings unavailable';
+
+        const pending = live.stations.map(s => api.getReadings(s.levelMeasure, since));
+        // First load: show the primary gauge as soon as it arrives rather than
+        // waiting for the slowest station.
+        const pi = live.stations.findIndex(s => s.id === PRIMARY);
+        if (!live.status.updatedAt && pi >= 0) {
+          pending[pi].then(d => {
+            if (live.status.updatedAt || !d.length) return;
+            live.series[PRIMARY] = d;
+            live.status = { mode: 'live', updatedAt: Date.now(), error: null, refreshing: true };
+            live.emit('status', live.status);
+            live.emit('update', { partial: true });
+          }, () => {});
+        }
+        const results = await Promise.allSettled(pending);
+        let ok = 0;
+        results.forEach((r, i) => {
+          const id = live.stations[i].id;
+          if (r.status === 'fulfilled' && r.value.length) { live.series[id] = r.value; ok++; }
+          else if (r.status === 'rejected') live.stations[i].error = r.reason?.message;
+        });
+
+        if (ok) {
+          live.status = { mode: 'live', updatedAt: Date.now(), error: ok < live.stations.length ? `${live.stations.length - ok} station(s) did not respond` : null, refreshing: false };
+        } else if (live.status.updatedAt) {
+          live.status = { ...live.status, mode: 'stale', error: api.netLog.lastError?.message || 'Update failed', refreshing: false };
+        } else {
+          await live.useSnapshot();
+        }
+        live.emit('status', live.status);
+        live.emit('update', { manual });
+      })().finally(() => { refreshing = null; });
+      return refreshing;
+    },
+
+    async useSnapshot() {
+      try {
+        const snap = await api.getSnapshotFallback();
+        for (const [id, s] of Object.entries(snap.stations)) { live.byId[id] = s; live.stations = live.stations.map(x => (x.id === id ? s : x)); }
+        for (const [id, d] of Object.entries(snap.series)) if (d.length) live.series[id] = d;
+        live.status = { mode: 'snapshot', updatedAt: null, snapshotAt: snap.capturedAt, error: api.netLog.lastError?.message || 'Live service unavailable', refreshing: false };
+      } catch {
+        live.status = { mode: 'error', updatedAt: null, error: api.netLog.lastError?.message || 'Live service and saved snapshot unavailable', refreshing: false };
+      }
+    },
+
+    // Readings for a station over an arbitrary window (cached by the API layer).
+    async window(id, from, to = Date.now()) {
+      const s = live.station(id);
+      if (live.status.mode === 'snapshot') return { data: (live.series[id] || []).filter(p => p[0] >= from && p[0] <= to), sources: ['Saved snapshot'] };
+      if (from >= api.liveWindowStart()) return { data: (await api.getReadings(s.levelMeasure, from)).filter(p => p[0] <= to), sources: ['EA real-time API'] };
+      return api.getRange(s, from, to);
+    },
+
+    async rain(gaugeId, from) {
+      if (live.status.mode === 'snapshot') {
+        const snap = await api.getSnapshotFallback();
+        return gaugeId === '1773' ? (snap.rain1773 || []).filter(p => p[0] >= from) : [];
+      }
+      return api.getRain(gaugeId, from);
+    },
+
+    rainGauges: RAIN_GAUGES,
+
+    start() {
+      const tick = () => { if (!document.hidden) live.refresh(); };
+      timer = setInterval(tick, RULES.refreshMs);
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && live.status.updatedAt && Date.now() - live.status.updatedAt > RULES.refreshMs) live.refresh();
+      });
+      addEventListener('online', () => live.refresh());
+      addEventListener('offline', () => { live.status = { ...live.status, offline: true }; live.emit('status', live.status); });
+      return live.refresh();
+    },
+    stop() { clearInterval(timer); },
+  };
+  return live;
+}

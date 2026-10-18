@@ -1,0 +1,4 @@
+# Static site: Netlify serves dist/ directly, no build step.
+[build]
+  publish = "dist"
+  command = "echo 'Static site: serving dist/'"

@@ -1,1 +1,359 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Worcester River Lab</title><meta name="description" content="Explore real River Severn observations and a reproducible flood research project."><link rel="stylesheet" href="style.css"></head><body><header><a class="brand" href="#">≈ <span>Worcester River Lab</span></a><span class="pill">RESEARCH PROTOTYPE · 03</span></header><main><nav class="jump-nav" aria-label="Dashboard sections"><a href="#explorer">Visual explorer</a><a href="#observations">Latest readings</a><a href="#history">History</a><a href="#experiment">Experiment</a></nav><section class="hero"><p class="eyebrow">RIVER SEVERN / WORCESTER</p><h1>Watch the river.<br>Explore what’s next.</h1><p class="intro">Start with observations. Ask better questions.<br>Explore the Severn at Diglis, one reading at a time.</p><div class="actions"><a class="button" href="#observations">Explore the readings ↓</a><a href="#research">The research question ↗</a></div><div class="river-art" aria-hidden="true"><svg viewBox="0 0 400 400"><path d="M270 -30 C 80 80,400 120,210 210 S 40 300,200 430"/><path d="M300 -30 C 110 80,430 120,240 210 S 70 300,230 430"/><path d="M330 -30 C 140 80,460 120,270 210 S 100 300,260 430"/></svg><span>52.1798° N<br>2.2255° W</span></div></section><section class="visual-overview"><div class="station-map"><p class="eyebrow">THREE POINTS OF VIEW</p><h2>The river, in context</h2><svg viewBox="0 0 600 340" role="img" aria-label="Schematic: Bewdley is upstream of Diglis; rainfall station 1773 is near Worcester. Not a geographic map."><defs><pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M30 0H0V30" fill="none" stroke="#ffffff" opacity=".07"/></pattern></defs><rect width="600" height="340" fill="url(#grid)"/><path d="M160 20 C80 90 320 100 245 180 S240 260 320 330" stroke="#75b8be" stroke-width="36" fill="none" opacity=".18"/><path d="M160 20 C80 90 320 100 245 180 S240 260 320 330" stroke="#9bdbdf" stroke-width="3" fill="none"/><circle cx="155" cy="60" r="9" fill="#dfed9b"/><text x="180" y="56">Bewdley</text><text x="180" y="77" class="map-small">Upstream · River Severn</text><circle cx="250" cy="266" r="10" fill="#fff"/><text x="276" y="265">Diglis</text><text x="276" y="286" class="map-small">Worcester · our target gauge</text><circle cx="438" cy="172" r="10" fill="#e9bb7d"/><path d="M438 190L280 235" stroke="#e9bb7d" stroke-dasharray="4 6" opacity=".5"/><text x="365" y="135">☂ Rainfall 1773</text><text x="365" y="153" class="map-small">Local context only</text><text x="32" y="316" class="map-small">↓ Downstream · schematic, not to scale</text></svg></div><div class="overview-copy"><p class="eyebrow">FROM OBSERVATION TO EXPERIMENT</p><h2>Does upstream data<br>give us a head start?</h2><p>Explore how the river changes at two locations, see when rain falls, and inspect our first small forecasting test.</p><div class="visual-steps"><a href="#observations">01 <b>Watch Diglis</b> <span>↓</span></a><a href="#history">02 <b>Compare the signals</b> <span>↓</span></a><a href="#experiment">03 <b>Inspect the results</b> <span>↓</span></a></div></div></section><section id="explorer" class="explorer"><div class="section-head"><div><p class="eyebrow">THE INTERACTIVE FIELD NOTEBOOK</p><h2>One river. More ways to see it.</h2></div><span class="pill">RECORDED DATA · NOT A LIVE FORECAST</span></div><p id="explorer-source" class="muted">Loading the research snapshot…</p><div class="explorer-tabs" role="group" aria-label="Choose an explorer view"><button data-view="replay" aria-pressed="true">◷ Time replay</button><button data-view="calendar" aria-pressed="false">▦ Daily patterns</button><button data-view="accuracy" aria-pressed="false">⤢ Forecast microscope</button><button data-view="quality" aria-pressed="false">▥ Data coverage</button></div><div id="explorer-body"></div><p class="muted explorer-foot">Every view uses the saved research snapshot. Live readings have their own refresh control below. Keyboard controls and tap-to-inspect are supported.</p></section><section id="observations"><div class="section-head"><div><p class="eyebrow">OBSERVATION DESK</p><h2>Diglis river levels</h2></div><button id="refresh">Refresh data ↻</button></div><p id="status" role="status">Loading Environment Agency observations…</p><div class="cards"><article><p>Latest available level</p><strong id="level">—</strong><small id="time">Awaiting data</small></article><article><p>Change over approximately 6 hours</p><strong id="change">—</strong><small id="change-note">Measured change, not a forecast</small></article><article><p>Typical range at this gauge</p><strong id="range">—</strong><small>Historical context, not a flood-warning threshold</small></article></div><div class="chart-panel"><div class="section-head"><h3>How the level has changed</h3><div class="tabs" aria-label="Chart period"><button data-hours="24" aria-pressed="true">24 hours</button><button data-hours="72" aria-pressed="false">3 days</button><button data-hours="168" aria-pressed="false">7 days</button></div></div><p class="muted">Metres above this station’s local datum · times in UK local time</p><div id="chart" aria-live="polite"></div><p id="coverage" class="muted"></p><div class="section-head"><button id="download" disabled>Download visible readings ↓</button><details><summary>See readings as a table</summary><div class="table-wrap"><table><thead><tr><th>Time (UK)</th><th>Level (m)</th></tr></thead><tbody id="table"></tbody></table></div></details></div></div><aside><strong>For exploration, not safety decisions.</strong> This prototype does not predict floods or assess individual properties. <a href="https://check-for-flooding.service.gov.uk/" target="_blank" rel="noopener">Check official flood warnings ↗</a></aside></section><section id="history" class="history-panel"><p class="eyebrow">HISTORICAL SNAPSHOT</p><div class="section-head"><h2>Rain above. River below.</h2><select id="history-days" aria-label="History period"><option value="7">Last 7 days in snapshot</option><option value="30" selected>Up to 30 days in snapshot</option></select></div><p id="history-status" class="muted">Loading recorded observations…</p><div class="legend"><span class="teal">● Diglis</span><span class="gold">● Bewdley</span><span class="blue">▥ Local rainfall</span></div><div id="comparison-chart"></div><p class="muted">River lines show change from each gauge’s first reading in the selected window, not absolute height. Rain bars are hourly totals only where all four 15-minute readings are present. Missing hours stay blank.</p><a href="history.json" download>Download the research snapshot (JSON) ↓</a></section><section id="experiment" class="experiment-panel"><p class="eyebrow">FIRST EXPERIMENT / NOT AN OPERATIONAL FORECAST</p><div class="section-head"><h2>Does the extra data help?</h2><select id="horizon" aria-label="Forecast horizon"><option value="1">1 hour ahead</option><option value="3" selected>3 hours ahead</option><option value="6">6 hours ahead</option></select></div><p>Average error on the later, held-out observations. <strong>Shorter bars are better.</strong></p><div id="scores"></div><p id="experiment-summary"></p><div id="prediction-chart"></div><p class="muted">Observed level (teal) and experimental prediction (orange) on the held-out period. Every prediction uses earlier observations. This is a historical replay, not a forecast of what happens next.</p><details><summary>How this experiment works & what it cannot prove</summary><p id="experiment-method"></p><p>This short record is not evidence of reliable flood warnings. A single local rain gauge does not represent the Severn catchment. Historical publication delays and data revisions are not reconstructed, so real-world performance may be worse. Overlapping forecast horizons make errors dependent; these are descriptive scores, not confidence estimates.</p><p>Next: longer quality-checked archives, several flood events, catchment rainfall, reporting-delay checks and rolling time-based validation.</p><a href="experiment.json" download>Download results and predictions ↓</a></details></section><section id="research" class="research"><div><p class="eyebrow">THE QUESTION WORTH TESTING</p><h2>Can we see a rise<br>coming sooner?</h2><p>Can rainfall and upstream river levels improve forecasts at Diglis, compared with simply assuming the latest level will stay the same?</p><p>We’ll measure the improvement before making any claims.</p></div><ol><li><span class="step">01 / NOW</span><h3>Build a trustworthy observation desk</h3><p>Real readings, timestamps, missing-data checks and downloadable evidence.</p></li><li><span class="step">02 / NEXT</span><h3>Assemble the historical record</h3><p>Upstream and local rainfall snapshots are connected. Longer quality-checked archives are the next step.</p></li><li><span class="step">03 / THEN</span><h3>Test a small forecasting experiment</h3><p>Inspect the first 1, 3 and 6-hour holdout comparison above. High-water event validation is still outstanding.</p></li></ol></section><section class="method"><h2>Small scope. Clear evidence.</h2><div class="method-grid"><div><h3>What the numbers mean</h3><p>Stage is height relative to a local reference point. It is not river depth or height above sea level. Levels from different gauges cannot be directly compared as if their reference points were identical.</p></div><div><h3>What’s working today</h3><p>A live Diglis view plus saved multi-station history and an export. An exploratory historical comparison now includes upstream and local rainfall observations. No background collection, notifications or validated operational predictions. Refresh requests the latest available data while this page is open.</p></div><div><h3>How we’ll judge progress</h3><p>First, forecast error against a simple baseline. Later, missed high-water events, false alarms and lead time using an explicitly defined research threshold. No accuracy claims until we have tested them.</p></div></div></section><footer><p>This uses Environment Agency flood and river level data from the real-time data API (Beta). This uses Environment Agency rainfall data from the real-time data API (Beta).</p><a href="https://environment.data.gov.uk/flood-monitoring/id/stations/2085.html">Station source</a> · <a href="https://environment.data.gov.uk/flood-monitoring/doc/reference">API & methodology</a> · <a href="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/">Open Government Licence v3.0</a><p>Worcester River Lab · An independent research prototype</p></footer></main><script src="app.js"></script><script src="visual.js"></script><script src="explorer.js"></script></body></html>
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Worcester River · Live River Severn Intelligence</title>
+<meta name="description" content="Live River Severn levels at Worcester from the Environment Agency: nearby gauges, official flood warnings, interactive maps, history since 2000 and explainable charts.">
+<meta name="theme-color" content="#0b1517" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4f5ed" media="(prefers-color-scheme: light)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230e2a2a'/%3E%3Cpath d='M5 13c4-4 7 4 11 0s7 4 11 0M5 20c4-4 7 4 11 0s7 4 11 0' stroke='%23d8ef97' stroke-width='2.4' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="app.css">
+<script>try{const t=localStorage.getItem('wr-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="topbar">
+  <a class="brand" href="./" aria-label="Worcester River home">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9"/><path d="M5 13c4-4 7 4 11 0s7 4 11 0M5 20c4-4 7 4 11 0s7 4 11 0"/></svg>
+    <span><b>Worcester River</b><small>Severn intelligence</small></span>
+  </a>
+  <nav class="primary-nav" aria-label="Main views">
+    <button type="button" data-nav="overview">Overview</button>
+    <button type="button" data-nav="map">Map</button>
+    <button type="button" data-nav="analysis">Analysis</button>
+    <button type="button" data-nav="explore">Explore</button>
+    <button type="button" data-nav="history">History</button>
+    <a href="lab.html">Research lab</a>
+  </nav>
+  <div class="topbar-tools">
+    <button type="button" id="live-status" class="status-pill" data-mode="loading" aria-live="polite" title="Data status — click for details"><i></i><span>Connecting…</span></button>
+    <button type="button" id="refresh" class="icon-btn" aria-label="Refresh data now" title="Refresh data now"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></svg></button>
+    <button type="button" id="theme" class="icon-btn" aria-label="Switch colour theme" title="Switch light/dark theme"><svg viewBox="0 0 24 24"><path d="M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10z"/></svg></button>
+    <button type="button" id="intel-open" class="intel-btn" aria-controls="intel" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20L12 3zm0 6v5m0 3v.5"/></svg><span>Flood intelligence</span><b id="intel-badge" hidden>0</b></button>
+  </div>
+</header>
+
+<main id="main" tabindex="-1">
+
+<!-- ============ OVERVIEW ============ -->
+<section class="view" id="view-overview" data-view="overview" aria-labelledby="ov-title">
+  <div class="hero">
+    <div class="hero-main">
+      <p class="eyebrow" id="ov-title">River Severn at Worcester · Diglis gauge</p>
+      <div class="hero-level">
+        <span class="hero-num" id="ov-level">—</span><span class="hero-unit">m</span>
+        <span class="chip" id="ov-trend" data-k="unknown">—</span>
+        <span class="chip" id="ov-band" data-k="unknown">—</span>
+      </div>
+      <p class="hero-summary" id="ov-summary">Loading the latest Environment Agency observation…</p>
+      <div class="hero-meta">
+        <span class="fresh" id="ov-fresh" data-k="none"><i></i><span>—</span></span>
+        <details class="explain">
+          <summary>What does this number mean?</summary>
+          <p><b>Stage</b> is the water surface height in metres above the gauge's own local reference point (“station datum”, mASD). It is <b>not</b> the depth of the river, and different gauges have different datums, so their numbers can’t be compared directly. The EA publishes a <b>typical range</b> for each gauge — useful context, but <b>not</b> a flood-warning threshold. Official warnings are issued separately and shown in Flood intelligence.</p>
+        </details>
+      </div>
+    </div>
+    <div class="hero-gauge" id="ov-gauge" aria-live="polite"></div>
+    <button type="button" class="hero-warn" id="ov-warn" data-k="loading">
+      <span class="eyebrow">Official flood warnings</span>
+      <strong id="ov-warn-title">Checking…</strong>
+      <span id="ov-warn-sub">Environment Agency · within 40 km</span>
+      <span class="hero-warn-cta">Open flood intelligence →</span>
+    </button>
+  </div>
+
+  <div class="kpis" id="ov-kpis" aria-label="Key indicators for Diglis"></div>
+
+  <section class="panel" id="ov-timeline" aria-labelledby="tl-title">
+    <div class="panel-head">
+      <div>
+        <h2 id="tl-title">River level timeline</h2>
+        <p class="sub" id="tl-sub">Diglis · metres above station datum · UK time</p>
+      </div>
+      <div class="tools">
+        <div class="seg" role="group" aria-label="Time range" id="tl-range"></div>
+        <button type="button" class="icon-btn" data-full="#ov-timeline" aria-label="Full-screen chart" title="Full screen"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+      </div>
+    </div>
+    <form class="custom-range" id="tl-custom" hidden>
+      <label>From <input type="date" name="from" required></label>
+      <label>To <input type="date" name="to" required></label>
+      <button class="btn btn-small" type="submit">Show</button>
+      <span class="hint">Last 4 weeks from the live feed; earlier dates from the EA quality-checked archive (up to 62 days at a time).</span>
+    </form>
+    <div class="toggle-row">
+      <label class="switch"><input type="checkbox" id="tl-band" checked><span>Typical range band</span></label>
+      <label class="switch"><input type="checkbox" id="tl-notes" checked><span>Auto annotations</span></label>
+      <label class="switch"><input type="checkbox" id="tl-upstream"><span>Compare with Bewdley (upstream)</span></label>
+    </div>
+    <div class="chart chart-lg" id="tl-chart" role="img" aria-label="River level timeline"></div>
+    <div class="panel-foot">
+      <p class="note" id="tl-note"></p>
+      <div class="foot-actions">
+        <button type="button" class="btn btn-ghost btn-small" id="tl-csv">Download CSV</button>
+        <button type="button" class="btn btn-ghost btn-small" id="tl-explore">Open in Explore →</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="st-title">
+    <div class="panel-head">
+      <div>
+        <h2 id="st-title">Nearby monitoring stations</h2>
+        <p class="sub">River Severn and River Teme gauges, upstream to downstream. Each gauge uses its own datum — compare trends and position in range, not raw numbers.</p>
+      </div>
+      <div class="seg" role="group" aria-label="Sort stations" id="st-sort">
+        <button type="button" data-sort="river" aria-pressed="true">River order</button>
+        <button type="button" data-sort="range" aria-pressed="false">% of typical range</button>
+        <button type="button" data-sort="rate" aria-pressed="false">Rate of change</button>
+      </div>
+    </div>
+    <div class="stations" id="st-grid"></div>
+  </section>
+</section>
+
+<!-- ============ MAP ============ -->
+<section class="view" id="view-map" data-view="map" aria-labelledby="map-title" hidden>
+  <div class="map-shell" id="map-shell">
+    <h2 class="sr-only" id="map-title">River explorer map</h2>
+    <div id="map" class="map" role="application" aria-label="Interactive map of Worcester river gauges. Use the station list for keyboard access."></div>
+    <form class="map-search" id="map-search" role="search">
+      <label class="sr-only" for="map-q">Search a place, postcode or station</label>
+      <input id="map-q" type="search" placeholder="Search place, postcode or station…" autocomplete="off" list="map-q-stations">
+      <datalist id="map-q-stations"></datalist>
+      <button type="submit" class="icon-btn" aria-label="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/></svg></button>
+    </form>
+    <div class="map-tools">
+      <button type="button" class="icon-btn" id="map-reset" aria-label="Reset map view" title="Reset view"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg></button>
+      <button type="button" class="icon-btn" id="map-full" aria-label="Full-screen map" title="Full screen"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+    </div>
+    <details class="map-layers" id="map-layers" open>
+      <summary>Layers</summary>
+      <label><input type="checkbox" data-layer="stations" checked> River gauges <small>EA live</small></label>
+      <label><input type="checkbox" data-layer="rivers" checked> Main rivers <small>EA map</small></label>
+      <label><input type="checkbox" data-layer="warnings" checked> Flood warning areas <small>EA</small></label>
+      <label><input type="checkbox" data-layer="rain"> Rain gauges <small>EA, last 24 h</small></label>
+      <label><input type="checkbox" data-layer="radar"> Rainfall radar <small>RainViewer</small></label>
+      <p class="map-legend-note" id="map-radar-note" hidden></p>
+    </details>
+    <div class="map-legend" aria-hidden="true">
+      <span><i class="lg lg-low"></i>Below typical</span><span><i class="lg lg-normal"></i>Typical</span><span><i class="lg lg-high"></i>Above typical</span><span><i class="lg lg-area"></i>Warning area</span>
+    </div>
+    <aside class="map-panel" id="map-panel" aria-live="polite" hidden></aside>
+  </div>
+  <section class="panel">
+    <div class="panel-head"><div><h2>Stations on the map</h2><p class="sub">Keyboard-friendly list. Select a station to fly to it and open its details.</p></div></div>
+    <div class="station-list" id="map-list"></div>
+  </section>
+</section>
+
+<!-- ============ ANALYSIS ============ -->
+<section class="view" id="view-analysis" data-view="analysis" aria-labelledby="an-title" hidden>
+  <header class="view-head">
+    <p class="eyebrow">Analysis</p>
+    <h1 id="an-title">How the river is behaving</h1>
+    <p class="lede">Five linked views of the recorded data. Hover for exact readings, drag the timeline handles to zoom, and download any dataset.</p>
+  </header>
+
+  <section class="panel" id="an-multi" aria-labelledby="an-multi-title">
+    <div class="panel-head">
+      <div><span class="kicker">01</span><h2 id="an-multi-title">Multi-station comparison</h2>
+        <p class="sub" id="an-multi-sub"></p></div>
+      <div class="tools">
+        <div class="seg" role="group" aria-label="Time range" id="an-range"></div>
+        <button type="button" class="icon-btn" data-full="#an-multi" aria-label="Full-screen chart"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+      </div>
+    </div>
+    <div class="chips" id="an-stations" role="group" aria-label="Stations to compare"></div>
+    <div class="seg seg-wide" role="group" aria-label="Measure" id="an-metric"></div>
+    <div class="chart chart-lg" id="an-multi-chart"></div>
+    <details class="explain">
+      <summary>Why compare in different ways? (station datums explained)</summary>
+      <ul class="explain-list">
+        <li><b>Stage</b> — each gauge’s height above its <i>own</i> local datum. Raw numbers are not comparable between gauges.</li>
+        <li><b>Change</b> — centimetres gained or lost since the start of the window. Good for comparing timing of rises.</li>
+        <li><b>% of typical range</b> — 0% = EA typical low, 100% = EA typical high for that gauge. Datum-independent; the best like-for-like comparison.</li>
+        <li><b>Derived mAOD</b> — stage + the EA “stage-scale datum”, which the EA API documents as the gauge’s datum on Ordnance Datum. Derived here, not published as a reading; useful for seeing the water surface fall downstream (e.g. over Diglis weir).</li>
+      </ul>
+      <div id="an-datums"></div>
+    </details>
+    <div class="panel-foot"><p class="note" id="an-multi-note"></p><button type="button" class="btn btn-ghost btn-small" id="an-multi-csv">Download CSV</button></div>
+  </section>
+
+  <div class="grid-2">
+    <section class="panel" aria-labelledby="an-gauge-title">
+      <div class="panel-head"><div><span class="kicker">02</span><h2 id="an-gauge-title">Level gauge</h2><p class="sub">Latest reading against EA reference levels for the gauge.</p></div>
+        <label class="select"><span class="sr-only">Station</span><select id="an-gauge-station"></select></label></div>
+      <div id="an-gauge" class="gauge-wrap"></div>
+      <table class="ref-table" id="an-ref"></table>
+    </section>
+    <section class="panel" aria-labelledby="an-range-title">
+      <div class="panel-head"><div><span class="kicker">03</span><h2 id="an-range-title">Where each gauge sits in its typical range</h2><p class="sub">Latest reading as % of the EA typical range. Click a bar to focus that station.</p></div></div>
+      <div class="chart chart-md" id="an-bars"></div>
+    </section>
+  </div>
+
+  <section class="panel" id="an-rate" aria-labelledby="an-rate-title">
+    <div class="panel-head">
+      <div><span class="kicker">04</span><h2 id="an-rate-title">Rate of change</h2><p class="sub">How fast the recorded level is rising (amber) or falling (blue), in centimetres per hour, from readings one hour apart.</p></div>
+      <div class="tools"><label class="select"><span class="sr-only">Station</span><select id="an-rate-station"></select></label><div class="seg" role="group" aria-label="Time range" id="an-rate-range"></div></div>
+    </div>
+    <div class="rate-summary" id="an-rate-summary"></div>
+    <div class="chart chart-md" id="an-rate-chart"></div>
+    <div class="panel-foot"><p class="note">Each bar compares a reading with the one closest to 60 minutes earlier (within 10 min). Missing readings leave gaps; values are not interpolated.</p><button type="button" class="btn btn-ghost btn-small" id="an-rate-csv">Download CSV</button></div>
+  </section>
+
+  <section class="panel" id="an-rain" aria-labelledby="an-rain-title">
+    <div class="panel-head">
+      <div><span class="kicker">05</span><h2 id="an-rain-title">Rainfall and river level</h2><p class="sub">Hourly rainfall at an EA rain gauge (hanging bars) above the river level. Rivers respond to rain over the whole catchment, often hours to days later.</p></div>
+      <div class="tools">
+        <label class="select"><span class="sr-only">Rain gauge</span><select id="an-rain-gauge"></select></label>
+        <label class="select"><span class="sr-only">River station</span><select id="an-rain-station"></select></label>
+        <div class="seg" role="group" aria-label="Time range" id="an-rain-range"></div>
+      </div>
+    </div>
+    <div class="rain-summary" id="an-rain-summary"></div>
+    <div class="chart chart-lg" id="an-rain-chart"></div>
+    <div class="panel-foot"><p class="note">Rain totals use only complete hours (all four 15-minute readings present); missing hours stay blank rather than zero. A single gauge measures rain at one point and does not represent the whole Severn catchment.</p><button type="button" class="btn btn-ghost btn-small" id="an-rain-csv">Download CSV</button></div>
+  </section>
+
+  <section class="panel panel-sim" id="an-sim" aria-labelledby="an-sim-title">
+    <div class="sim-banner" role="note"><b>SIMULATION</b> — hypothetical what-if with your own assumptions. Not a forecast, not official, and not based on any model of the river.</div>
+    <div class="panel-head">
+      <div><span class="kicker">06</span><h2 id="an-sim-title">Scenario simulator</h2><p class="sub">“If the level kept changing at a constant rate, when would it reach each reference level?” Real rivers do not behave linearly.</p></div>
+      <label class="select"><span class="sr-only">Station</span><select id="sim-station"></select></label>
+    </div>
+    <div class="sim-controls">
+      <label>Assumed rate <output id="sim-rate-out"></output><input type="range" id="sim-rate" min="-10" max="20" step="0.5" value="2"></label>
+      <label>Duration <output id="sim-hours-out"></output><input type="range" id="sim-hours" min="6" max="96" step="6" value="48"></label>
+      <button type="button" class="btn btn-small btn-ghost" id="sim-observed">Use observed current rate</button>
+    </div>
+    <div class="sim-out" id="sim-out"></div>
+    <div class="chart chart-md" id="sim-chart"></div>
+  </section>
+</section>
+
+<!-- ============ EXPLORE ============ -->
+<section class="view" id="view-explore" data-view="explore" aria-labelledby="ex-title" hidden>
+  <header class="view-head">
+    <p class="eyebrow">Explore mode</p>
+    <h1 id="ex-title">Investigate the record yourself</h1>
+    <p class="lede">Pick stations and dates, scrub or play through time, pin notes on the chart, then share the exact view with a link.</p>
+  </header>
+  <div class="explore">
+    <aside class="explore-side" aria-label="Explore controls">
+      <fieldset><legend>Stations</legend><div id="ex-stations" class="ex-stations"></div></fieldset>
+      <fieldset><legend>Time range</legend>
+        <div class="seg seg-wide" role="group" aria-label="Time range" id="ex-range"></div>
+        <form id="ex-custom" class="ex-custom">
+          <label>From <input type="date" name="from"></label>
+          <label>To <input type="date" name="to"></label>
+          <button class="btn btn-small" type="submit">Apply dates</button>
+        </form>
+      </fieldset>
+      <fieldset><legend>Measure</legend><div class="seg seg-col" role="group" aria-label="Measure" id="ex-metric"></div></fieldset>
+      <fieldset><legend>Annotations</legend>
+        <label class="switch"><input type="checkbox" id="ex-auto" checked><span>Show automatic annotations</span></label>
+        <p class="hint">Click (or tap) the chart to pin a note at that time. Notes are saved in the share link.</p>
+        <button type="button" class="btn btn-small btn-ghost" id="ex-clear-notes">Clear my notes</button>
+      </fieldset>
+      <div class="ex-actions">
+        <button type="button" class="btn" id="ex-share">Copy share link</button>
+        <button type="button" class="btn btn-ghost" id="ex-csv">Download CSV</button>
+      </div>
+    </aside>
+    <div class="explore-main">
+      <section class="panel" id="ex-panel">
+        <div class="panel-head">
+          <div><h2 id="ex-chart-title">Recorded river levels</h2><p class="sub" id="ex-sub"></p></div>
+          <button type="button" class="icon-btn" data-full="#ex-panel" aria-label="Full-screen chart"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+        </div>
+        <div class="chart chart-xl" id="ex-chart"></div>
+        <div class="player" id="ex-player">
+          <button type="button" class="btn btn-small" id="ex-play" aria-label="Play time-series animation">▶ Play</button>
+          <input type="range" id="ex-scrub" min="0" max="1000" value="1000" aria-label="Playhead position">
+          <output id="ex-playtime" class="mono">—</output>
+          <label class="select"><span class="sr-only">Speed</span><select id="ex-speed"><option value="1">1×</option><option value="2" selected>2×</option><option value="4">4×</option></select></label>
+        </div>
+      </section>
+      <div class="grid-2">
+        <section class="panel"><div class="panel-head"><div><h2>Linked map</h2><p class="sub">Hover a marker to highlight its line; hover a line to highlight its marker. During playback, markers show each gauge at the playhead.</p></div></div><div id="ex-map" class="ex-map"></div></section>
+        <section class="panel"><div class="panel-head"><div><h2>What happened in this window</h2><p class="sub">Select an insight to zoom the chart to it.</p></div></div><div id="ex-insights" class="insights"></div></section>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ HISTORY ============ -->
+<section class="view" id="view-history" data-view="history" aria-labelledby="hi-title" hidden>
+  <header class="view-head">
+    <p class="eyebrow">Historical explorer</p>
+    <h1 id="hi-title">Past rises and falls since 2000</h1>
+    <p class="lede">Daily maximum levels from the Environment Agency hydrology archive (quality-flagged). Compare major past events with each other and with today.</p>
+  </header>
+  <div class="hist-bar">
+    <label class="select">Station <select id="hi-station"></select></label>
+    <p class="note" id="hi-source"></p>
+  </div>
+  <div class="hist-context" id="hi-context"></div>
+  <section class="panel" id="hi-long">
+    <div class="panel-head"><div><h2>Every day since 2000</h2><p class="sub">Daily maximum stage. Numbered dots are the largest independent events (at least 14 days apart). Drag the handles or brush to zoom.</p></div>
+      <div class="tools"><button type="button" class="btn btn-small btn-ghost" id="hi-csv">Download CSV</button><button type="button" class="icon-btn" data-full="#hi-long" aria-label="Full-screen chart"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button></div></div>
+    <div class="chart chart-lg" id="hi-chart"></div>
+  </section>
+  <div class="grid-2 grid-hist">
+    <section class="panel">
+      <div class="panel-head"><div><h2>Largest recorded events</h2><p class="sub">Tick events to overlay them. Select a date to zoom the long-term chart.</p></div></div>
+      <div class="table-wrap"><table class="data-table" id="hi-events"></table></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><div><h2>Event comparison</h2><p class="sub">Daily maxima aligned on each event’s peak day.</p></div></div>
+      <div class="chart chart-md" id="hi-overlay"></div>
+    </section>
+  </div>
+  <section class="panel">
+    <div class="panel-head"><div><h2>Year at a glance</h2><p class="sub">Each square is one day, coloured by its maximum level.</p></div>
+      <div class="tools"><button type="button" class="icon-btn" id="hi-prev" aria-label="Previous year">‹</button><output id="hi-year" class="mono year-out"></output><button type="button" class="icon-btn" id="hi-next" aria-label="Next year">›</button></div></div>
+    <div class="chart chart-cal" id="hi-cal"></div>
+  </section>
+</section>
+
+</main>
+
+<!-- ============ FLOOD INTELLIGENCE DRAWER ============ -->
+<div class="scrim" id="intel-scrim" hidden></div>
+<aside class="drawer" id="intel" aria-labelledby="intel-title" aria-hidden="true" tabindex="-1">
+  <div class="drawer-head">
+    <div><p class="eyebrow">Worcester &amp; surrounding 40 km</p><h2 id="intel-title">Flood intelligence</h2></div>
+    <button type="button" class="icon-btn" id="intel-close" aria-label="Close flood intelligence"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+  </div>
+  <div class="drawer-body" id="intel-body"></div>
+</aside>
+
+<nav class="bottom-nav" aria-label="Main views (mobile)">
+  <button type="button" data-nav="overview"><svg viewBox="0 0 24 24"><path d="M3 12 12 4l9 8M5 10v10h14V10"/></svg>Overview</button>
+  <button type="button" data-nav="map"><svg viewBox="0 0 24 24"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg>Map</button>
+  <button type="button" data-nav="analysis"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Analysis</button>
+  <button type="button" data-nav="explore"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/></svg>Explore</button>
+  <button type="button" data-nav="history"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7v5l3 2"/></svg>History</button>
+</nav>
+
+<footer class="site-foot">
+  <div>
+    <p><b>Sources.</b> River levels, rainfall, stations, flood warnings and flood areas: <a href="https://environment.data.gov.uk/flood-monitoring/doc/reference" rel="noopener" target="_blank">Environment Agency real-time flood-monitoring API (Beta)</a>. History: <a href="https://environment.data.gov.uk/hydrology/doc/reference" rel="noopener" target="_blank">EA Hydrology API</a>. River network: <a href="https://environment.data.gov.uk/dataset/25dde009-ba7d-40de-8380-c5c3bb32ccdc" rel="noopener" target="_blank">EA Statutory Main River Map</a>. All contain public sector information licensed under the <a href="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/" rel="noopener" target="_blank">Open Government Licence v3.0</a>. Base map © OpenStreetMap contributors. Optional radar © RainViewer. Place search: Nominatim (OSM) &amp; postcodes.io.</p>
+    <p><b>Independent project.</b> Not affiliated with the Environment Agency. This site shows recorded observations and official warnings; it does not forecast floods. For safety decisions use <a href="https://check-for-flooding.service.gov.uk/" rel="noopener" target="_blank">Check for flooding</a> or call Floodline 0345 988 1188. All times are UK local time (GMT/BST).</p>
+  </div>
+  <a href="lab.html" class="btn btn-ghost btn-small">Research lab &amp; experiment →</a>
+</footer>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
+<script src="vendor/echarts.min.js" defer></script>
+<script src="vendor/leaflet/leaflet.js" defer></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
