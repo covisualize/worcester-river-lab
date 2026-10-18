@@ -123,9 +123,33 @@ def archive():
         'stations': stations}
 
 
+def without_timestamps(obj):
+    """Copy of a dataset with retrieval timestamps removed, for comparison."""
+    if isinstance(obj, dict):
+        return {k: without_timestamps(v) for k, v in obj.items() if k != 'retrievedAt'}
+    if isinstance(obj, list):
+        return [without_timestamps(v) for v in obj]
+    return obj
+
+
+def write_if_changed(path, data):
+    """Write only when the data differs from the saved file, ignoring the
+    retrieval timestamp, so unchanged weekly refreshes produce no commit."""
+    try:
+        old = json.load(open(path))
+    except (OSError, ValueError):
+        old = None
+    if old is not None and without_timestamps(old) == without_timestamps(data):
+        print(path.name, 'unchanged')
+        return False
+    json.dump(data, open(path, 'w'), separators=(',', ':'))
+    print(path.name, 'updated')
+    return True
+
+
 if __name__ == '__main__':
     OUT.mkdir(parents=True, exist_ok=True)
     r = rivers()
-    json.dump(r, open(OUT / 'main-rivers.geojson', 'w'), separators=(',', ':'))
     print('rivers', sum(len(l) for l in r['features'][0]['geometry']['coordinates']), 'points')
-    json.dump(archive(), open(OUT / 'archive-daily.json', 'w'), separators=(',', ':'))
+    write_if_changed(OUT / 'main-rivers.geojson', r)
+    write_if_changed(OUT / 'archive-daily.json', archive())
