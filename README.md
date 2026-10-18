@@ -45,7 +45,11 @@ npm run test:e2e       # headless Chromium: 15 checks incl. offline fallback and
 ```
 The end-to-end test serves `dist/` through request interception and answers EA calls from `tests/fixtures/ea.json` (real responses captured once) with a fixed clock, so it is deterministic and offline. Its flood alert is a labelled test fixture and is never shipped.
 
-Deployment is unchanged: `.openai/hosting.json` serves `dist/` as static files.
+### Deployment
+`dist/` is a complete static site, so any static host works. The existing `.openai/hosting.json` is unchanged. Ready-made configs:
+- **GitHub Pages** — `.github/workflows/pages.yml` runs the tests and then publishes `dist/` on every push to `main`. One-time setup: *Settings → Pages → Source: GitHub Actions*. On a free GitHub plan the repository must be public.
+- **Vercel** — `vercel.json` (import the repo at vercel.com/new; no settings needed).
+- **Netlify** — `netlify.toml` (import the repo at app.netlify.com; no settings needed).
 
 ---
 
