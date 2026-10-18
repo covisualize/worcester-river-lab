@@ -1,0 +1,49 @@
+# Weekly refresh of the static reference data (EA Hydrology daily archive and
+# EA Statutory Main River Map). Commits only when the data changed, then
+# triggers the Pages workflow, which re-runs the tests before deploying.
+name: Weekly data refresh
+
+on:
+  schedule:
+    - cron: '17 5 * * 1' # Mondays 05:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Rebuild reference data from the Environment Agency
+        run: python research/build_reference.py
+      - name: Sanity-check the new files before committing
+        run: python research/check_reference.py
+      - name: Commit if changed
+        id: commit
+        run: |
+          if git diff --quiet -- dist/data; then
+            echo "No data changes."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dist/data
+          git commit -m "Weekly refresh of EA archive and river network data"
+          git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+      - name: Deploy the refreshed site
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --ref main
