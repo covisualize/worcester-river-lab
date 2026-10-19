@@ -148,9 +148,13 @@ export function timeSeriesOption({
 export function rateOption({ data, T, animate = true, name = 'Rate of change' }) {
   const all = data.map(p => p[1]);
   const span = data.length ? data[data.length - 1][0] - data[0][0] : time.DAY;
-  const { lo, hi } = extremes(data);
+  // Only positive rates count as rises and only negative ones as falls, so an
+  // all-falling window never reports a "fastest rise".
+  const up = extremes(data.filter(p => p[1] > 0)).hi, down = extremes(data.filter(p => p[1] < 0)).lo;
   const desc = data.length
-    ? `Bar chart of rate of change for ${name}, centimetres per hour, UK time, ${fmt.dateTime(data[0][0])} to ${fmt.dateTime(data[data.length - 1][0])}. Fastest rise ${fmt.signed(hi[1], 1)} cm/h at ${fmt.dateTime(hi[0])}; fastest fall ${fmt.signed(lo[1], 1)} cm/h at ${fmt.dateTime(lo[0])}.`
+    ? `Bar chart of rate of change for ${name}, centimetres per hour, UK time, ${fmt.dateTime(data[0][0])} to ${fmt.dateTime(data[data.length - 1][0])}. ` +
+      (up ? `Fastest rise ${fmt.signed(up[1], 1)} cm/h at ${fmt.dateTime(up[0])}` : 'No rise in this window') + '; ' +
+      (down ? `fastest fall ${fmt.signed(down[1], 1)} cm/h at ${fmt.dateTime(down[0])}.` : 'no fall in this window.')
     : `Rate of change for ${name}: not enough readings.`;
   return {
     ...base(T, animate, desc),

@@ -161,7 +161,11 @@ try {
   await step('accessibility: no axe violations on any view, in both themes', async () => {
     const found = [];
     for (const theme of ['dark', 'light']) {
-      await page.evaluate(t => { document.documentElement.dataset.theme = t; }, theme);
+      // Use the real theme control so every view re-renders with that theme's colours.
+      if (await page.evaluate(() => document.documentElement.dataset.theme) !== theme) {
+        await page.click('#theme');
+        await page.waitForFunction(t => document.documentElement.dataset.theme === t, theme);
+      }
       for (const v of ['overview', 'map', 'analysis', 'explore', 'history']) {
         await page.click(`.primary-nav [data-nav="${v}"]`);
         await page.waitForTimeout(v === 'history' ? 2500 : 1200);

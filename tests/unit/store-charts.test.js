@@ -106,3 +106,16 @@ test('chart descriptions are plain English for screen readers', () => {
   assert.match(opts[2].aria.label.description, /Diglis: 1%\. Bewdley: not available\./);
   assert.match(opts[4].aria.label.description, /hypothetical and not a forecast/);
 });
+
+test('rate summary never calls a fall a rise (single-direction windows)', () => {
+  const t0 = Date.parse('2026-10-18T00:00:00Z');
+  const falling = Array.from({ length: 8 }, (_, i) => [t0 + i * 900000, -1 - i * 0.2]);
+  const rising = falling.map(([t, v]) => [t, -v]);
+  const df = rateOption({ data: falling, T, name: 'Diglis' }).aria.label.description;
+  const dr = rateOption({ data: rising, T, name: 'Diglis' }).aria.label.description;
+  assert.match(df, /No rise in this window/);
+  assert.match(df, /fastest fall −2\.4 cm\/h/);
+  assert.ok(!/Fastest rise −/.test(df), df);
+  assert.match(dr, /Fastest rise \+2\.4 cm\/h/);
+  assert.match(dr, /no fall in this window/);
+});
