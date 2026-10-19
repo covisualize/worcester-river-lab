@@ -166,6 +166,8 @@ try {
         await page.click(`.primary-nav [data-nav="${v}"]`);
         await page.waitForTimeout(v === 'history' ? 2500 : 1200);
         if (v === 'map') await page.click('#map-list button[data-id="2085"]');
+        // Toasts fade in/out; auditing mid-animation measures a half-transparent colour.
+        await page.waitForFunction(() => !document.querySelector('.toast'), null, { timeout: 6000 });
         for (const x of await axeViolations(page)) found.push(`${theme}/${v}: ${x}`);
       }
     }

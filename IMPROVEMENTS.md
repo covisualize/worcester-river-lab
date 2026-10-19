@@ -53,7 +53,8 @@ Anything broken here takes priority over the backlog.
   text read raw epoch milliseconds); map-marker labels pick the higher-contrast ink
   (white text measured ~2:1 on dark-theme fills); light-theme "rising"/"steady" chip text
   darkened to ≥5:1; h1 on every view; nested <aside> landmarks fixed; map zoom control
-  moved so it no longer covers the station panel; mobile layer list starts collapsed.
+  moved so it no longer covers the station panel; search box moves beside an open panel
+  instead of being hidden under it; mobile layer list starts collapsed.
   axe-core WCAG 2.2 AA audit added to the e2e suite (one documented 2.5.8 "equivalent
   control" exception for the Explore mini-map).
 - 2026-10-18 — #1–#3 — Dashboard v4 shipped, GitHub Pages deploy, weekly data refresh
