@@ -10,6 +10,24 @@ import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 
 const root = fileURLToPath(new URL('../../dist/', import.meta.url));
+const AXE = await readFile(new URL('../../node_modules/axe-core/axe.min.js', import.meta.url), 'utf8');
+
+// WCAG 2.2 AA plus best practice; charts are canvases, so their text
+// alternatives are checked separately by the unit tests.
+// The Explore mini-map's markers overlap at regional zoom; WCAG 2.5.8's
+// "equivalent" exception applies because the station checkboxes beside it
+// offer the same function, so target-size is skipped for that map only.
+async function axeViolations(page) {
+  await page.addScriptTag({ content: AXE });
+  return page.evaluate(async () => {
+    const r = await window.axe.run(document, { runOnly: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa', 'best-practice'] });
+    const inMiniMap = n => !!document.querySelector('#ex-map')?.contains(document.querySelector(n.target[0]));
+    return r.violations
+      .map(v => (v.id === 'target-size' ? { ...v, nodes: v.nodes.filter(n => !inMiniMap(n)) } : v))
+      .filter(v => v.nodes.length)
+      .map(v => `${v.impact} ${v.id} (${v.nodes.length}): ${v.nodes[0].target.join(' ')}`);
+  });
+}
 const fx = JSON.parse(await readFile(new URL('../fixtures/ea.json', import.meta.url)));
 const NOW = Date.parse(fx.capturedAt);
 const ORIGIN = 'https://wr.test';
@@ -64,7 +82,7 @@ async function open(browser, { path = '/', viewport, device, offline = false, wi
 const waitLive = page => page.waitForFunction(() => window.__wr?.live.status.mode === 'live', null, { timeout: 20000 });
 const results = [];
 const step = async (name, fn) => {
-  try { await fn(); results.push(`  ✓ ${name}`); } catch (e) { results.push(`  ✗ ${name}\n    ${e.message.split('\n')[0]}`); process.exitCode = 1; }
+  try { await fn(); results.push(`  ✓ ${name}`); } catch (e) { results.push(`  ✗ ${name}\n    ${e.message.split('\n').slice(0, 12).join('\n    ')}`); process.exitCode = 1; }
 };
 
 const browser = await chromium.launch();
@@ -105,8 +123,8 @@ try {
     await page.waitForFunction(() => location.search.includes('view=map'));
     await page.waitForFunction(() => document.querySelectorAll('.gauge-marker').length === 7);
     await page.click('#map-list button[data-id="2086"]');
-    await page.waitForSelector('#map-panel:not([hidden]) h3');
-    assert.equal(await page.textContent('#map-panel h3'), 'Bransford');
+    await page.waitForSelector('#map-panel:not([hidden]) .panel-title');
+    assert.equal(await page.textContent('#map-panel .panel-title'), 'Bransford');
   });
 
   await step('analysis: station chips and measures update the shared state', async () => {
@@ -138,6 +156,20 @@ try {
     await page.waitForSelector('#hi-events tbody tr', { timeout: 15000 });
     assert.ok((await page.locator('#hi-events tbody tr').count()) >= 10);
     assert.match(await page.textContent('#hi-context'), /2007/);
+  });
+
+  await step('accessibility: no axe violations on any view, in both themes', async () => {
+    const found = [];
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(t => { document.documentElement.dataset.theme = t; }, theme);
+      for (const v of ['overview', 'map', 'analysis', 'explore', 'history']) {
+        await page.click(`.primary-nav [data-nav="${v}"]`);
+        await page.waitForTimeout(v === 'history' ? 2500 : 1200);
+        if (v === 'map') await page.click('#map-list button[data-id="2085"]');
+        for (const x of await axeViolations(page)) found.push(`${theme}/${v}: ${x}`);
+      }
+    }
+    assert.ok(!found.length, found.join('\n    '));
   });
 
   await step('no runtime errors on desktop', () => assert.deepEqual(errors, []));

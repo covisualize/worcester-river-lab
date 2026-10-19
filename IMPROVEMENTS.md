@@ -21,8 +21,10 @@ it is how successive runs avoid repeating or contradicting each other.
 Anything broken here takes priority over the backlog.
 
 ## Backlog (highest value first)
-- [ ] Accessibility audit (WCAG 2.1 AA): colour contrast in both themes, focus order,
-      screen-reader names for charts and map markers, 44 px touch targets on mobile.
+- [x] Accessibility audit (WCAG 2.2 AA + best practice, axe-core): zero violations on all
+      5 views in both themes; chart screen-reader summaries; regression test in e2e.
+- [ ] Accessibility follow-up: manual screen-reader pass (VoiceOver/NVDA) over the map
+      panel and Explore playback; a visible "skip to chart data" table option.
 - [ ] Performance: Lighthouse on mobile; consider lazy-loading ECharts/Leaflet per view,
       and pre-compressing `dist/data/archive-daily.json`.
 - [ ] Chart time-axis ticks follow the viewer's local timezone; make tick placement
@@ -44,5 +46,15 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-10-19 — daily/2026-10-19-accessibility — Health: site live on desktop+mobile, no
+  console errors; all 7 gauges reporting (22–37 min old); no warnings in force; EA API
+  shapes unchanged; Pages deploy and Monday's scheduled data refresh green. Change:
+  accessibility pass. Charts now give plain-English screen-reader summaries (ECharts' own
+  text read raw epoch milliseconds); map-marker labels pick the higher-contrast ink
+  (white text measured ~2:1 on dark-theme fills); light-theme "rising"/"steady" chip text
+  darkened to ≥5:1; h1 on every view; nested <aside> landmarks fixed; map zoom control
+  moved so it no longer covers the station panel; mobile layer list starts collapsed.
+  axe-core WCAG 2.2 AA audit added to the e2e suite (one documented 2.5.8 "equivalent
+  control" exception for the Explore mini-map).
 - 2026-10-18 — #1–#3 — Dashboard v4 shipped, GitHub Pages deploy, weekly data refresh
   that commits only on real data changes.
