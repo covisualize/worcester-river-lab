@@ -181,8 +181,8 @@ export function createExplore(ctx) {
       const p = ser ? (atT ? nearest(ser.raw, atT, 45 * time.MIN) : ser.raw.at(-1)) : live.latestOf(cfg.id);
       const pos = rangePosition(p?.[1], st.scale);
       const m = L.marker([st.lat, st.lng], {
-        icon: gaugeIcon(ctx.T, { label: p ? p[1].toFixed(1) : '–', key: sel.has(cfg.id) ? pos.key : 'none', primary: cfg.id === focusId() }),
-        opacity: sel.has(cfg.id) ? 1 : 0.45, title: st.label, keyboard: true,
+        icon: gaugeIcon(ctx.T, { label: p ? p[1].toFixed(1) : '–', key: sel.has(cfg.id) ? pos.key : 'none', primary: cfg.id === focusId(), dim: !sel.has(cfg.id) }),
+        title: st.label, keyboard: true,
       }).bindTooltip(`<b>${esc(st.label)}</b><br>${p ? `${p[1].toFixed(3)} m at ${esc(fmt.dateTime(p[0]))}<br>${esc(pos.label)}` : 'No reading'}${sel.has(cfg.id) ? '' : '<br><i>Click to add to the chart</i>'}`, { direction: 'top', offset: [0, -14] });
       m.on('mouseover', () => highlight(cfg.id, true, 'map'));
       m.on('mouseout', () => highlight(cfg.id, false, 'map'));

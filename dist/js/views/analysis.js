@@ -143,15 +143,16 @@ export function createAnalysis(ctx) {
       if (id !== req.rate) return;
       rateData = rateSeries(data);
       const vals = rateData.map(p => p[1]);
-      const up = rateData.reduce((m, p) => (p[1] > (m?.[1] ?? -Infinity) ? p : m), null);
-      const dn = rateData.reduce((m, p) => (p[1] < (m?.[1] ?? Infinity) ? p : m), null);
+      // Rises are positive rates only and falls negative only (an all-falling window has no rise).
+      const up = rateData.filter(p => p[1] > 0).reduce((m, p) => (p[1] > (m?.[1] ?? -Infinity) ? p : m), null);
+      const dn = rateData.filter(p => p[1] < 0).reduce((m, p) => (p[1] < (m?.[1] ?? Infinity) ? p : m), null);
       const rising = vals.filter(v => v >= 0.5).length, falling = vals.filter(v => v <= -0.5).length;
       const now = currentRate(data), tr = trend(now);
       const stat = (label, v, small) => `<div class="stat"><span>${label}</span><strong>${v}</strong>${small ? `<small>${small}</small>` : ''}</div>`;
       $('#an-rate-summary').innerHTML = rateData.length ? [
         stat('Now', fmt.signed(now, 1, ' cm/h'), tr.label),
-        stat('Fastest rise', up ? fmt.signed(up[1], 1, ' cm/h') : '—', up ? fmt.dateTime(up[0]) : ''),
-        stat('Fastest fall', dn ? fmt.signed(dn[1], 1, ' cm/h') : '—', dn ? fmt.dateTime(dn[0]) : ''),
+        stat('Fastest rise', up ? fmt.signed(up[1], 1, ' cm/h') : 'None', up ? fmt.dateTime(up[0]) : 'no rise in this window'),
+        stat('Fastest fall', dn ? fmt.signed(dn[1], 1, ' cm/h') : 'None', dn ? fmt.dateTime(dn[0]) : 'no fall in this window'),
         stat('Time rising / falling', `${Math.round((rising / vals.length) * 100)}% / ${Math.round((falling / vals.length) * 100)}%`, `typical |rate| ${quantile(vals.map(Math.abs), 0.5)?.toFixed(1)} cm/h`),
       ].join('') : '<p class="empty">Not enough consecutive readings to compute a rate.</p>';
       charts.rate.set(rateOption({ data: rateData, T: ctx.T, animate: ctx.animate, name: live.station(local.rateStation).label }));

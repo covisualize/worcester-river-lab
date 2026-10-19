@@ -42,7 +42,7 @@
 <section class="view" id="view-overview" data-view="overview" aria-labelledby="ov-title">
   <div class="hero">
     <div class="hero-main">
-      <p class="eyebrow" id="ov-title">River Severn at Worcester · Diglis gauge</p>
+      <h1 class="eyebrow" id="ov-title">River Severn at Worcester · Diglis gauge</h1>
       <div class="hero-level">
         <span class="hero-num" id="ov-level">—</span><span class="hero-unit">m</span>
         <span class="chip" id="ov-trend" data-k="unknown">—</span>
@@ -119,7 +119,7 @@
 <!-- ============ MAP ============ -->
 <section class="view" id="view-map" data-view="map" aria-labelledby="map-title" hidden>
   <div class="map-shell" id="map-shell">
-    <h2 class="sr-only" id="map-title">River explorer map</h2>
+    <h1 class="sr-only" id="map-title">River explorer map</h1>
     <div id="map" class="map" role="application" aria-label="Interactive map of Worcester river gauges. Use the station list for keyboard access."></div>
     <form class="map-search" id="map-search" role="search">
       <label class="sr-only" for="map-q">Search a place, postcode or station</label>
@@ -143,7 +143,7 @@
     <div class="map-legend" aria-hidden="true">
       <span><i class="lg lg-low"></i>Below typical</span><span><i class="lg lg-normal"></i>Typical</span><span><i class="lg lg-high"></i>Above typical</span><span><i class="lg lg-area"></i>Warning area</span>
     </div>
-    <aside class="map-panel" id="map-panel" aria-live="polite" hidden></aside>
+    <section class="map-panel" id="map-panel" aria-label="Station details" aria-live="polite" hidden></section>
   </div>
   <section class="panel">
     <div class="panel-head"><div><h2>Stations on the map</h2><p class="sub">Keyboard-friendly list. Select a station to fly to it and open its details.</p></div></div>
@@ -245,7 +245,7 @@
     <p class="lede">Pick stations and dates, scrub or play through time, pin notes on the chart, then share the exact view with a link.</p>
   </header>
   <div class="explore">
-    <aside class="explore-side" aria-label="Explore controls">
+    <section class="explore-side" aria-label="Explore controls">
       <fieldset><legend>Stations</legend><div id="ex-stations" class="ex-stations"></div></fieldset>
       <fieldset><legend>Time range</legend>
         <div class="seg seg-wide" role="group" aria-label="Time range" id="ex-range"></div>
@@ -265,7 +265,7 @@
         <button type="button" class="btn" id="ex-share">Copy share link</button>
         <button type="button" class="btn btn-ghost" id="ex-csv">Download CSV</button>
       </div>
-    </aside>
+    </section>
     <div class="explore-main">
       <section class="panel" id="ex-panel">
         <div class="panel-head">

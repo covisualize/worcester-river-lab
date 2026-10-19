@@ -85,3 +85,37 @@ test('inline SVG primitives', () => {
   assert.ok(sparkline([]).includes('<svg'));
   assert.equal(esc('<a href="x">&'), '&lt;a href=&quot;x&quot;&gt;&amp;');
 });
+
+test('chart descriptions are plain English for screen readers', () => {
+  const raw = series.slice(-96);
+  const opts = [
+    timeSeriesOption({ series: [{ id: '2085', name: 'Diglis', color: '#111111', raw, data: raw }], T, animate: false }),
+    rateOption({ data: rateSeries(raw), T, name: 'Diglis' }),
+    rangeBarsOption({ rows: [{ name: 'Diglis', pct: 1.4 }, { name: 'Bewdley', pct: null }], T }),
+    rainLevelOption({ rain: [[raw[4][0], 0.4]], level: raw, T, rainName: 'Rain gauge 1773', levelName: 'Diglis level' }),
+    simulationOption({ observed: raw, simulated: simulateLinear(0.5, 2, 6).map(([h, v]) => [raw.at(-1)[0] + h * 3600000, v]), thresholds: [], T }),
+  ];
+  for (const o of opts) {
+    const d = o.aria.label.description;
+    assert.ok(d.length > 40, 'has a real description');
+    assert.ok(!/\d{12,}/.test(d), `no raw epoch timestamps: ${d}`);
+    assert.ok(!/\d\.\d{5,}/.test(d), `no float noise: ${d}`);
+    assert.ok(!/NaN|undefined/.test(d), d);
+  }
+  assert.match(opts[0].aria.label.description, /Diglis: .* m at .*highest/);
+  assert.match(opts[2].aria.label.description, /Diglis: 1%\. Bewdley: not available\./);
+  assert.match(opts[4].aria.label.description, /hypothetical and not a forecast/);
+});
+
+test('rate summary never calls a fall a rise (single-direction windows)', () => {
+  const t0 = Date.parse('2026-10-18T00:00:00Z');
+  const falling = Array.from({ length: 8 }, (_, i) => [t0 + i * 900000, -1 - i * 0.2]);
+  const rising = falling.map(([t, v]) => [t, -v]);
+  const df = rateOption({ data: falling, T, name: 'Diglis' }).aria.label.description;
+  const dr = rateOption({ data: rising, T, name: 'Diglis' }).aria.label.description;
+  assert.match(df, /No rise in this window/);
+  assert.match(df, /fastest fall −2\.4 cm\/h/);
+  assert.ok(!/Fastest rise −/.test(df), df);
+  assert.match(dr, /Fastest rise \+2\.4 cm\/h/);
+  assert.match(dr, /no fall in this window/);
+});

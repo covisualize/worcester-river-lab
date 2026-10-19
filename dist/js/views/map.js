@@ -20,10 +20,22 @@ export function bandColor(T, key) {
   return key === 'high' ? T.rise : key === 'low' ? T.fall : key === 'normal' ? T.water : T.muted;
 }
 
-export function gaugeIcon(T, { label, key, primary, hi }) {
+// Label colour with the higher WCAG contrast against the marker fill.
+export function inkFor(hex) {
+  const lum = h => {
+    const c = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(x => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return '#ffffff';
+  const l = lum(hex);
+  return (1.05 / (l + 0.05)) >= ((l + 0.05) / (lum('#0b1517') + 0.05)) ? '#ffffff' : '#0b1517';
+}
+
+export function gaugeIcon(T, { label, key, primary, hi, dim }) {
+  const bg = bandColor(T, key);
   return L.divIcon({
     className: '', iconSize: primary ? [36, 36] : [30, 30],
-    html: `<div class="gauge-marker${primary ? ' is-primary' : ''}${hi ? ' is-hi' : ''}" style="background:${bandColor(T, key)}">${esc(label)}</div>`,
+    html: `<div class="gauge-marker${primary ? ' is-primary' : ''}${hi ? ' is-hi' : ''}${dim ? ' is-dim' : ''}" style="background:${bg};color:${inkFor(bg)}">${esc(label)}</div>`,
   });
 }
 
@@ -32,7 +44,9 @@ export function createMapView(ctx) {
   let map, base, layers = {}, markers = {}, placeMarker, floodAreas = null, warnLoaded = false, rainLoaded = false, radarLoaded = false;
 
   function mount() {
-    map = L.map('map', { zoomControl: true, preferCanvas: false, worldCopyJump: false }).setView([HOME.lat, HOME.lng], HOME.zoom);
+    map = L.map('map', { zoomControl: false, preferCanvas: false, worldCopyJump: false }).setView([HOME.lat, HOME.lng], HOME.zoom);
+    // Bottom-right keeps the zoom buttons clear of the station panel and search box.
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
     base = basemap(ctx.theme()).addTo(map);
     map.attributionControl.addAttribution('EA data &copy; Crown copyright, <a href="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/">OGL v3</a>');
     layers.stations = L.layerGroup().addTo(map);
@@ -42,6 +56,8 @@ export function createMapView(ctx) {
     layers.radar = L.layerGroup();
     loadRivers();
     loadWarnings();
+    // On phones start with the layer list collapsed so it doesn't cover the map.
+    if (matchMedia('(max-width: 640px)').matches) $('#map-layers').open = false;
 
     $$('#map-layers input[data-layer]').forEach(cb => cb.addEventListener('change', () => {
       const layer = layers[cb.dataset.layer];
@@ -106,7 +122,7 @@ export function createMapView(ctx) {
     panel.innerHTML = `
       <button type="button" class="icon-btn close" aria-label="Close station details">×</button>
       <p class="eyebrow">${esc(cfg.river)} · ${esc(cfg.role)}</p>
-      <h3>${esc(st.label)}</h3>
+      <h2 class="panel-title">${esc(st.label)}</h2>
       <div class="hero-level" style="margin:8px 0 0"><span class="station-val">${last ? last[1].toFixed(3) : '—'}<small> m</small></span><span class="chip" data-k="${tr.key}">${tr.arrow} ${esc(tr.label)}${rate != null ? ' ' + fmt.signed(rate, 1, ' cm/h') : ''}</span><span class="chip" data-k="${pos.key}">${esc(pos.label)}</span></div>
       <p class="sub">${last ? `${esc(fmt.full(last[0]))} · ${esc(fmt.age(fr.ageMin))}` : esc(st.error || 'No reading available')}</p>
       ${sparkline(series, { width: 320, height: 70, color: ctx.colorOf(id), band: st.scale })}

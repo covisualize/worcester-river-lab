@@ -11,7 +11,30 @@ export function timeLabel(span) {
   return v => (UK_MIDNIGHT(v) ? `{d|${fmt.date(v)}}` : span > 3 * time.DAY ? `${fmt.date(v)} ${fmt.time(v)}` : fmt.time(v));
 }
 
-function base(T, animate) {
+/* ---------- Screen-reader summaries ----------
+   ECharts' automatic aria text reads raw epoch milliseconds and float noise, so
+   every chart gets a plain-English description of what it shows instead. */
+
+const num = (v, d) => (v == null || !Number.isFinite(v) ? 'unavailable' : (+v.toFixed(d)).toString());
+
+function extremes(data) {
+  let lo = null, hi = null;
+  for (const p of data) if (p[1] != null) { if (!lo || p[1] < lo[1]) lo = p; if (!hi || p[1] > hi[1]) hi = p; }
+  return { lo, hi };
+}
+
+export function describeSeries(series, { metric = 'stage', kind = 'Line chart' } = {}) {
+  const M = METRICS[metric];
+  const parts = series.map(s => {
+    const pts = s.data.filter(p => p[1] != null);
+    if (!pts.length) return `${s.name}: no readings.`;
+    const { lo, hi } = extremes(pts), a = pts[0], b = pts[pts.length - 1];
+    return `${s.name}: ${num(a[1], M.digits)} ${M.unit} at ${fmt.dateTime(a[0])} to ${num(b[1], M.digits)} ${M.unit} at ${fmt.dateTime(b[0])}; highest ${num(hi[1], M.digits)} at ${fmt.dateTime(hi[0])}, lowest ${num(lo[1], M.digits)} at ${fmt.dateTime(lo[0])}.`;
+  });
+  return `${kind} of ${M.label.toLowerCase()}, UK time. ${parts.join(' ')}`;
+}
+
+function base(T, animate, description) {
   return {
     backgroundColor: 'transparent',
     textStyle: { fontFamily: T.font, color: T.muted },
@@ -19,7 +42,7 @@ function base(T, animate) {
     animationDuration: 700,
     animationDurationUpdate: 550,
     animationEasingUpdate: 'cubicOut',
-    aria: { enabled: true, decal: { show: false } },
+    aria: { enabled: true, decal: { show: false }, ...(description ? { label: { description } } : {}) },
   };
 }
 
@@ -53,7 +76,7 @@ export function timeSeriesOption({
   const rateById = Object.fromEntries(series.map(s => [s.id, s.raw ? rateSeries(s.raw) : []]));
   const single = series.length === 1;
   const out = {
-    ...base(T, animate),
+    ...base(T, animate, describeSeries(series, { metric })),
     color: series.map(s => s.color),
     grid: { left: compact ? 44 : 56, right: compact ? 14 : 24, top: compact ? 16 : 36, bottom: slider ? 78 : 34, containLabel: false },
     legend: single || compact ? { show: false } : { top: 0, left: 'center', icon: 'roundRect', itemWidth: 14, itemHeight: 4, textStyle: { color: T.text, fontSize: 12 } },
@@ -125,8 +148,16 @@ export function timeSeriesOption({
 export function rateOption({ data, T, animate = true, name = 'Rate of change' }) {
   const all = data.map(p => p[1]);
   const span = data.length ? data[data.length - 1][0] - data[0][0] : time.DAY;
+  // Only positive rates count as rises and only negative ones as falls, so an
+  // all-falling window never reports a "fastest rise".
+  const up = extremes(data.filter(p => p[1] > 0)).hi, down = extremes(data.filter(p => p[1] < 0)).lo;
+  const desc = data.length
+    ? `Bar chart of rate of change for ${name}, centimetres per hour, UK time, ${fmt.dateTime(data[0][0])} to ${fmt.dateTime(data[data.length - 1][0])}. ` +
+      (up ? `Fastest rise ${fmt.signed(up[1], 1)} cm/h at ${fmt.dateTime(up[0])}` : 'No rise in this window') + '; ' +
+      (down ? `fastest fall ${fmt.signed(down[1], 1)} cm/h at ${fmt.dateTime(down[0])}.` : 'no fall in this window.')
+    : `Rate of change for ${name}: not enough readings.`;
   return {
-    ...base(T, animate),
+    ...base(T, animate, desc),
     grid: { left: 52, right: 18, top: 24, bottom: 70 },
     tooltip: {
       ...tooltipBase(T), trigger: 'axis', axisPointer: { type: 'shadow' },
@@ -148,8 +179,10 @@ export function rateOption({ data, T, animate = true, name = 'Rate of change' })
 export function rangeBarsOption({ rows, T, animate = true }) {
   const data = rows.map(r => ({ value: r.pct == null ? null : +r.pct.toFixed(1), name: r.name, row: r }));
   const color = v => (v == null ? T.muted : v > 100 ? T.alert : v < 0 ? T.fall : T.water);
+  const desc = 'Bar chart of where each gauge sits in its typical range, where 0% is the typical low and 100% the typical high. ' +
+    rows.map(r => `${r.name}: ${r.pct == null ? 'not available' : Math.round(r.pct) + '%'}.`).join(' ');
   return {
-    ...base(T, animate),
+    ...base(T, animate, desc),
     grid: { left: 8, right: 40, top: 26, bottom: 26, containLabel: true },
     tooltip: {
       ...tooltipBase(T), trigger: 'item',
@@ -175,8 +208,13 @@ export function rainLevelOption({ rain, level, T, animate = true, rainName, leve
   const all = [...rain, ...level];
   const t0 = Math.min(...all.map(p => p[0])), t1 = Math.max(...all.map(p => p[0]));
   const span = t1 - t0;
+  const total = rain.reduce((a, p) => a + (p[1] || 0), 0);
+  const wet = extremes(rain).hi, lv = extremes(level);
+  const desc = `Two linked charts, UK time, ${fmt.dateTime(t0)} to ${fmt.dateTime(t1)}. Top: hourly rainfall at ${rainName}, ${num(total, 1)} millimetres in ${rain.length} complete hours` +
+    (wet && wet[1] > 0 ? `, wettest hour ending ${fmt.dateTime(wet[0])} with ${num(wet[1], 1)} millimetres` : '') +
+    `. Bottom: ${levelName}` + (lv.hi ? `, between ${num(lv.lo[1], 2)} and ${num(lv.hi[1], 2)} metres, highest at ${fmt.dateTime(lv.hi[0])}.` : ', no readings.');
   return {
-    ...base(T, animate),
+    ...base(T, animate, desc),
     axisPointer: { link: [{ xAxisIndex: 'all' }] },
     grid: [{ left: 56, right: 20, top: 24, height: '26%' }, { left: 56, right: 20, top: '42%', bottom: 70 }],
     tooltip: {
@@ -205,8 +243,13 @@ export function rainLevelOption({ rain, level, T, animate = true, rainName, leve
 /* ---------- 5. Long-term archive (daily maxima) ---------- */
 
 export function archiveOption({ series, T, animate = true, thresholds = [], events = [], zoom }) {
+  const s0 = series[0]?.data || [];
+  const desc = s0.length
+    ? `Line chart of daily maximum river level for ${series[0].name}, ${fmt.dateYear(s0[0][0])} to ${fmt.dateYear(s0[s0.length - 1][0])}. Largest events: ` +
+      events.slice(0, 5).map((e, i) => `${i + 1}, ${fmt.dateYear(e.t + 12 * time.HOUR)} at ${num(e.value, 2)} metres`).join('; ') + '.'
+    : 'Daily maximum river level: no archive data.';
   return {
-    ...base(T, animate),
+    ...base(T, animate, desc),
     color: series.map(s => s.color),
     grid: { left: 52, right: 20, top: 36, bottom: 80 },
     legend: series.length > 1 ? { top: 0, textStyle: { color: T.text } } : { show: false },
@@ -231,8 +274,12 @@ export function archiveOption({ series, T, animate = true, thresholds = [], even
 /* ---------- 6. Event overlay (aligned on peak day) ---------- */
 
 export function eventsOverlayOption({ events, T, animate = true, reference = [] }) {
+  const desc = events.length
+    ? 'Line chart comparing past events, aligned on each peak day, from 15 days before to 15 days after. ' +
+      events.map(e => { const pk = extremes(e.data).hi; return `${e.name}: peak ${pk ? num(pk[1], 2) : 'unavailable'} metres.`; }).join(' ')
+    : 'Event comparison: no events selected.';
   return {
-    ...base(T, animate),
+    ...base(T, animate, desc),
     color: T.palette,
     grid: { left: 52, right: 24, top: 64, bottom: 44 },
     legend: { top: 0, type: 'scroll', data: events.map(e => e.name), textStyle: { color: T.text, fontSize: 11 }, pageTextStyle: { color: T.muted } },
@@ -256,8 +303,12 @@ export function eventsOverlayOption({ events, T, animate = true, reference = [] 
 export function calendarOption({ year, rows, T, animate = true, low, high, narrow = false }) {
   const data = rows.filter(r => r[0].startsWith(String(year))).map(r => [r[0], r[1]]);
   const vals = data.map(d => d[1]);
+  const top = data.reduce((m, d) => (d[1] > (m?.[1] ?? -Infinity) ? d : m), null);
+  const desc = data.length
+    ? `Calendar of daily maximum river level in ${year}, ${data.length} days with data. Highest ${num(top[1], 2)} metres on ${fmt.dateYear(Date.parse(top[0] + 'T12:00:00Z'))}.`
+    : `Calendar for ${year}: no data.`;
   return {
-    ...base(T, animate),
+    ...base(T, animate, desc),
     tooltip: { ...tooltipBase(T), formatter: p => `<b>${esc(fmt.dateYear(Date.parse(p.value[0] + 'T12:00:00Z')))}</b><br>Daily max ${p.value[1].toFixed(3)} m` },
     visualMap: {
       min: Math.min(...vals, low ?? Infinity), max: Math.max(...vals, high ?? -Infinity), calculable: true, orient: 'horizontal', left: 'center', bottom: 0,
@@ -276,8 +327,10 @@ export function calendarOption({ year, rows, T, animate = true, low, high, narro
 
 export function simulationOption({ observed, simulated, thresholds, T, animate = true }) {
   const span = (simulated.at(-1)?.[0] ?? 0) - (observed[0]?.[0] ?? 0);
+  const end = simulated.at(-1);
+  const desc = `Simulation chart, hypothetical and not a forecast. Observed level up to ${observed.length ? fmt.dateTime(observed[observed.length - 1][0]) : 'now'}, then a straight-line what-if reaching ${end ? num(end[1], 2) : 'unavailable'} metres at ${end ? fmt.dateTime(end[0]) : 'the end'}.`;
   return {
-    ...base(T, animate),
+    ...base(T, animate, desc),
     grid: { left: 52, right: 20, top: 30, bottom: 40 },
     legend: { top: 0, textStyle: { color: T.text, fontSize: 11 } },
     tooltip: { ...tooltipBase(T), trigger: 'axis', formatter: ps => `<b>${esc(fmt.full(ps[0].value[0]))}</b><br>` + ps.filter(p => p.value[1] != null).map(p => `${dot(p.color)}${esc(p.seriesName)}: <b>${p.value[1].toFixed(3)} m</b>`).join('<br>') },
