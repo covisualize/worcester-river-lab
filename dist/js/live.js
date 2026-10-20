@@ -99,8 +99,9 @@ export function createLive({ demo = null } = {}) {
 
     async useDemo(id) {
       try {
-        const [d, stations] = await Promise.all([api.getStatic(`data/demo-${id}.json`), api.getStations().catch(() => null)]);
-        if (stations) { live.stations = stations; live.byId = Object.fromEntries(stations.map(s => [s.id, s])); }
+        const d = await api.getStatic(`data/demo-${id}.json`);
+        // Bundled EA station metadata, so the replay works without the live service.
+        live.stations = STATIONS.map(cfg => api.normaliseStation(d.stations?.[cfg.id] || null, cfg));
         // Whole quarter-hours, so replayed readings keep the EA's 15-minute grid.
         const shift = Math.floor((Date.now() - d.now) / (15 * time.MIN)) * 15 * time.MIN;
         live.series = Object.fromEntries(Object.entries(d.series).map(([sid, rows]) => [sid, rows.map(([t, v]) => [t + shift, v])]));

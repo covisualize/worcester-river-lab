@@ -254,6 +254,15 @@ try {
     assert.deepEqual(await axeViolations(demo.page), []);
   });
   await demo.context.close();
+  const demoOff = await open(browser, { path: '/?demo=feb2020', offline: true });
+  await step('demo replay still classifies the flood with the EA service down', async () => {
+    await demoOff.page.waitForFunction(() => window.__wr?.live.status.mode === 'demo', null, { timeout: 30000 });
+    await demoOff.page.waitForFunction(() => /^High and rising$/.test(document.querySelector('#ov-verdict').textContent), null, { timeout: 8000 });
+    assert.equal(await demoOff.page.textContent('#ov-band'), 'Above typical range');
+    const [dl] = await Promise.all([demoOff.page.waitForEvent('download'), demoOff.page.click('#tl-csv')]);
+    assert.match(dl.suggestedFilename(), /^DEMO-feb2020-diglis-/);
+  });
+  await demoOff.context.close();
 
   /* ---------- Mobile: no horizontal scrolling on any view ---------- */
   const mob = await open(browser, { device: 'iPhone 13' });

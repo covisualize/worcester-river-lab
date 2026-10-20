@@ -176,6 +176,19 @@ test('demo replay data is real archive data, not invented', () => {
   assert.ok(dig.length > 900);
   assert.deepEqual(dig.at(-1), [Date.parse('2020-02-16T18:00:00Z'), 4.978]);
   for (const rows of Object.values(d.series)) for (const [t] of rows) assert.ok(t >= d.start && t <= d.now);
+  // Bundled EA metadata lets the replay classify levels without the live service.
+  const s = normaliseStation(d.stations['2085'], STATIONS.find(x => x.id === '2085'));
+  assert.equal(s.scale.high, 2.8);
+});
+
+test('CSV exports during a demo are marked and keep the real reading times', async () => {
+  const { markDemoCSV, toCSV } = await import('../../dist/js/data.js');
+  const shift = Date.parse('2026-10-20T21:00:00Z') - Date.parse('2020-02-16T18:00:00Z');
+  const csv = toCSV(['timestamp_utc', 'level_m_asd'], [[new Date(Date.parse('2020-02-16T18:00:00Z') + shift).toISOString(), 4.978]]);
+  const out = markDemoCSV(csv, shift).split('\n');
+  assert.equal(out[0], 'timestamp_utc,level_m_asd,data_source,original_timestamp_utc');
+  assert.equal(out[1], '2026-10-20T21:00:00.000Z,4.978,DEMO replay - not current,2020-02-16T18:00:00.000Z');
+  assert.equal(markDemoCSV(toCSV(['date_gmt', 'daily_max_m_asd'], [['2020-02-17', 5.27]]), shift), null, 'real dated archive is left alone');
 });
 
 test('simulation caveat is drawn inside the chart image', () => {

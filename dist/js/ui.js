@@ -1,6 +1,7 @@
 // Shared DOM helpers: theme tokens, chart mounting, counters, toasts, downloads.
 /* global echarts */
 import { esc } from './charts.js';
+import { markDemoCSV } from './data.js';
 
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -89,7 +90,12 @@ export function toast(message, kind = 'info') {
   setTimeout(() => el.remove(), 3700);
 }
 
+let demoExport = null; // { id, shift } while a demo replay is showing
+export const setDemoExport = d => (demoExport = d);
+
 export function download(name, text, type = 'text/csv') {
+  const marked = demoExport && type === 'text/csv' ? markDemoCSV(text, demoExport.shift) : null;
+  if (marked) { name = `DEMO-${demoExport.id}-${name}`; text = marked; }
   const url = URL.createObjectURL(new Blob([text], { type }));
   const a = Object.assign(document.createElement('a'), { href: url, download: name });
   document.body.append(a);

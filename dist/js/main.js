@@ -1,5 +1,5 @@
 // Application bootstrap: state, routing, shared helpers and status UI.
-import { $, $$, esc, tokens, reducedMotion, toggleFullscreen, toast, resizeAll } from './ui.js';
+import { $, $$, esc, setDemoExport, tokens, reducedMotion, toggleFullscreen, toast, resizeAll } from './ui.js';
 import { createStore, decode, VIEWS } from './store.js';
 import { createLive } from './live.js';
 import { STATIONS, RANGES } from './config.js';
@@ -155,6 +155,7 @@ function drawDemo(st) {
   el.hidden = !d;
   $('#ov-demo-link').hidden = !!store.get().demo;
   if (!d) return;
+  setDemoExport({ id: d.id, shift: d.shift });
   $('#ov-title').textContent = 'River Severn at Worcester · Diglis gauge · Demo replay';
   el.innerHTML = `<b>DEMO REPLAY · NOT CURRENT CONDITIONS</b><span>Real EA readings from ${esc(d.label)}, with times shifted so ${esc(fmt.dateYear(d.now))} ${esc(fmt.time(d.now))} shows as now. Flood warnings in this demo are illustrative, not real.</span><a href="${esc(location.pathname)}">Exit demo for live data</a>`;
 }

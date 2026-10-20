@@ -4,13 +4,16 @@ Real 15-minute stage readings from the EA Hydrology archive (quality-checked)
 for the curated gauges, 10 days up to 16 Feb 2020 18:00 GMT, the rising limb of
 the Storm Dennis flood at Worcester. The dashboard shifts these times so the
 replay's "now" lines up with the viewer's clock and labels every view as a
-demo. Flood warnings in the demo are illustrative and labelled as such; they
+demo. Station metadata (typical range, records) is current EA
+metadata, bundled so the demo works offline. Flood warnings in the demo are illustrative and labelled as such; they
 are not stored here. Run: python research/build_demo.py
 """
 import json, pathlib, datetime, urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 HYDRO = 'https://environment.data.gov.uk/hydrology'
+EA = 'https://environment.data.gov.uk/flood-monitoring'
+STATION_IDS = ['2001', '2642', '2085', '2616', '2032', '2029', '2086']
 ARCHIVE = {
     '2001': '8820d897-a09e-4857-8095-5834fee6962f',  # Bewdley
     '2642': '9e4a857f-063f-442b-a79d-911e6aca03ec',  # Worcester (Barbourne)
@@ -40,7 +43,15 @@ def readings(guid):
     return sorted(out)
 
 
+def station(sid):
+    # EA station metadata (typical range, highest recent, record) so the replay
+    # can classify levels even when the live EA service is down.
+    with urllib.request.urlopen(f'{EA}/id/stations/{sid}.json', timeout=60) as r:
+        return json.load(r)['items']
+
+
 series = {sid: readings(guid) for sid, guid in ARCHIVE.items()}
+stations = {sid: station(sid) for sid in STATION_IDS}
 doc = {
     'id': 'feb2020',
     'label': 'February 2020 flood (Storm Dennis)',
@@ -48,6 +59,7 @@ doc = {
     'retrievedAt': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'),
     'start': ms(START),
     'now': ms(NOW),
+    'stations': stations,
     'series': series,
 }
 out = ROOT / 'dist/data/demo-feb2020.json'

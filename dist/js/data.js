@@ -386,6 +386,20 @@ export function ukDayStart(dateStr) {
   return guess;
 }
 
+// Mark a CSV of replayed (time-shifted) readings, so a detached file can never
+// pass for current data: a source column and each reading's real time. Returns
+// null for exports that are not time-shifted (e.g. the dated daily archive).
+export function markDemoCSV(text, shiftMs) {
+  const lines = text.split('\n');
+  if (!/_utc$/.test(lines[0].split(',')[0])) return null;
+  return lines.map((l, i) => {
+    if (!l) return l;
+    if (i === 0) return `${l},data_source,original_timestamp_utc`;
+    const t = Date.parse(l.split(',')[0]);
+    return `${l},DEMO replay - not current,${Number.isFinite(t) ? new Date(t - shiftMs).toISOString() : ''}`;
+  }).join('\n');
+}
+
 export function toCSV(header, rows) {
   const esc = v => (v == null ? '' : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
   return [header.join(','), ...rows.map(r => r.map(esc).join(','))].join('\n');
