@@ -37,6 +37,7 @@
 </header>
 
 <main id="main" tabindex="-1">
+<div class="demo-banner" id="demo-banner" role="status" hidden></div>
 
 <!-- ============ OVERVIEW ============ -->
 <section class="view" id="view-overview" data-view="overview" aria-labelledby="ov-title">
@@ -47,7 +48,7 @@
       <p class="hero-warnline" id="ov-warnline" data-k="unknown"><i aria-hidden="true"></i><span>Checking official flood warnings…</span></p>
       <div class="hero-level">
         <span class="hero-num" id="ov-level">—</span><span class="hero-unit">m</span>
-        <span class="chip" id="ov-band" data-k="unknown" title="Position within the EA typical range for this gauge: 0% = typical low, 100% = typical high">—</span>
+        <span class="chip" id="ov-band" data-k="unknown" title="Where the level sits within the EA typical range for this gauge">—</span>
         <span class="chip" id="ov-trend" data-k="unknown">—</span>
       </div>
       <p class="hero-summary" id="ov-summary">Loading the latest Environment Agency observation…</p>
@@ -57,6 +58,7 @@
           <summary>What does this number mean?</summary>
           <p><b>Stage</b> is the water surface height in metres above the gauge's own local reference point (“station datum”, mASD). It is <b>not</b> the depth of the river, and different gauges have different datums, so their numbers can’t be compared directly. “Normal” here means within the EA’s <b>typical range</b> for this gauge — useful context, but <b>not</b> a flood-warning threshold. Official warnings are issued separately by the Environment Agency.</p>
         </details>
+        <a class="demo-link" id="ov-demo-link" href="?demo=feb2020">What does this page look like in a flood? Replay February 2020 →</a>
       </div>
     </div>
     <div class="hero-gauge" id="ov-gauge" aria-live="polite"></div>

@@ -1,7 +1,7 @@
 // Historical explorer: EA Hydrology daily maxima since 2000.
 import { $, $$, esc, mountChart, download, errorBox } from '../ui.js';
 import { archiveOption, eventsOverlayOption, calendarOption } from '../charts.js';
-import { topEvents, eventWindow, percentileRank, fmt, toCSV, time, parseTime } from '../data.js';
+import { topEvents, eventWindow, percentileRank, fmt, toCSV, time, parseTime, ukDateInput } from '../data.js';
 import { STATIONS, PRIMARY } from '../config.js';
 import { getStatic } from '../api.js';
 
@@ -42,7 +42,8 @@ export function createHistory(ctx) {
     if (!archive) return;
     const rows = rowsOf(station), st = live.station(station), sc = st.scale || {};
     const retrieved = parseTime(archive.retrievedAt);
-    const lagDays = Math.round((retrieved - Date.parse(rows.at(-1)[0] + 'T00:00:00Z')) / time.DAY);
+    // Whole calendar days between the UK retrieval date and the last archived day.
+    const lagDays = Math.round((Date.parse(ukDateInput(retrieved)) - Date.parse(rows.at(-1)[0])) / time.DAY);
     $('#hi-source').innerHTML = `${rows.length.toLocaleString('en-GB')} days · ${esc(fmt.dateYear(Date.parse(rows[0][0])))} to ${esc(fmt.dateYear(Date.parse(rows.at(-1)[0])))} · EA Hydrology API, retrieved ${esc(fmt.dateYear(retrieved))}. <b>The quality-checked archive runs about a week behind</b> (latest archived day was ${lagDays} days before retrieval); for the most recent days use Overview or Explore, which read the live feed.`;
     const minYear = +rows[0][0].slice(0, 4), maxYear = +rows.at(-1)[0].slice(0, 4);
     year = Math.min(Math.max(year, minYear), maxYear);
@@ -91,7 +92,7 @@ export function createHistory(ctx) {
     const evs = events.filter(e => picked.has(e.date)).map(e => ({ name: fmt.dateYear(e.t + 12 * time.HOUR), data: eventWindow(rows, e.date, 15) }));
     charts.overlay.set(eventsOverlayOption({
       events: evs, T: ctx.T, animate: ctx.animate,
-      reference: [last && { value: last[1], label: `Latest ${last[1].toFixed(2)} m`, color: ctx.T.accent }, sc.high != null && { value: sc.high, label: 'Typical high', color: ctx.T.water }].filter(Boolean),
+      reference: [last && { value: last[1], label: `Latest ${last[1].toFixed(2)} m`, color: ctx.T.accent, position: 'insideStartBottom' }, sc.high != null && { value: sc.high, label: 'Typical high', color: ctx.T.water }].filter(Boolean),
     }));
   }
 

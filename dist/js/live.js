@@ -1,10 +1,18 @@
 // Live data service: owns station metadata, recent readings and warnings,
 // schedules polite refreshes and degrades to the saved snapshot when offline.
-import { RULES, STATIONS, PRIMARY, RAIN_GAUGES } from './config.js';
+import { EA, RULES, STATIONS, PRIMARY, RAIN_GAUGES } from './config.js';
 import * as api from './api.js';
 import { time, latest } from './data.js';
 
-export function createLive() {
+// Demo replays: real archived readings shifted to "now", with illustrative
+// warnings. Every view labels them; they are never presented as current.
+const EA_POLYGON = `${EA}/id/floodAreas`;
+const DEMO_WARNINGS = [
+  { id: '031FWFSE440', area: 'DEMO · River Severn at Hylton Road, Worcester (illustrative, not a real warning)', severityLevel: 2, severity: 'Flood warning' },
+  { id: '031WAF108', area: 'DEMO · River Severn in Worcestershire (illustrative, not a real alert)', severityLevel: 3, severity: 'Flood alert' },
+];
+
+export function createLive({ demo = null } = {}) {
   const target = new EventTarget();
   let timer = null;
   let refreshing = null;
@@ -26,6 +34,12 @@ export function createLive() {
 
     async refresh({ manual = false } = {}) {
       if (refreshing) return refreshing;
+      if (demo) {
+        if (!live.status.demo) await live.useDemo(demo);
+        live.emit('status', live.status);
+        live.emit('update', { manual });
+        return;
+      }
       live.status = { ...live.status, mode: live.status.updatedAt ? live.status.mode : 'loading', refreshing: true };
       live.emit('status', live.status);
       refreshing = (async () => {
@@ -83,15 +97,35 @@ export function createLive() {
       }
     },
 
+    async useDemo(id) {
+      try {
+        const [d, stations] = await Promise.all([api.getStatic(`data/demo-${id}.json`), api.getStations().catch(() => null)]);
+        if (stations) { live.stations = stations; live.byId = Object.fromEntries(stations.map(s => [s.id, s])); }
+        // Whole quarter-hours, so replayed readings keep the EA's 15-minute grid.
+        const shift = Math.floor((Date.now() - d.now) / (15 * time.MIN)) * 15 * time.MIN;
+        live.series = Object.fromEntries(Object.entries(d.series).map(([sid, rows]) => [sid, rows.map(([t, v]) => [t + shift, v])]));
+        live.stations = live.stations.map(s => ({ ...s, latest: latest(live.series[s.id] || []) }));
+        live.byId = Object.fromEntries(live.stations.map(s => [s.id, s]));
+        const raised = d.now + shift - 6 * time.HOUR;
+        live.floods = { fetchedAt: Date.now(), items: DEMO_WARNINGS.map(w => ({ ...w, county: 'Worcestershire', river: 'River Severn', message: 'Demo replay: illustrative warning text. Check GOV.UK for real warnings.', raised, changed: raised, polygon: `${EA_POLYGON}/${w.id}/polygon`, tidal: false, demo: true })) };
+        live.floodsError = null;
+        live.status = { mode: 'demo', updatedAt: Date.now(), error: null, refreshing: false, demo: { id, label: d.label, source: d.source, start: d.start, now: d.now, shift } };
+      } catch (e) {
+        live.status = { mode: 'error', updatedAt: null, error: `Demo data unavailable (${e.message})`, refreshing: false };
+      }
+    },
+
     // Readings for a station over an arbitrary window (cached by the API layer).
     async window(id, from, to = Date.now()) {
       const s = live.station(id);
       if (live.status.mode === 'snapshot') return { data: (live.series[id] || []).filter(p => p[0] >= from && p[0] <= to), sources: ['Saved snapshot'] };
+      if (live.status.mode === 'demo') return { data: (live.series[id] || []).filter(p => p[0] >= from && p[0] <= to), sources: ['Demo replay (EA archive, Feb 2020)'] };
       if (from >= api.liveWindowStart()) return { data: (await api.getReadings(s.levelMeasure, from)).filter(p => p[0] <= to), sources: ['EA real-time API'] };
       return api.getRange(s, from, to);
     },
 
     async rain(gaugeId, from) {
+      if (live.status.mode === 'demo') return [];
       if (live.status.mode === 'snapshot') {
         const snap = await api.getSnapshotFallback();
         return gaugeId === '1773' ? (snap.rain1773 || []).filter(p => p[0] >= from) : [];

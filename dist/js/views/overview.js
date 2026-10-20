@@ -2,7 +2,7 @@
 import { $, $$, h, esc, countTo, mountChart, download, setBusy, errorBox } from '../ui.js';
 import { timeSeriesOption, gaugeSVG, sparkline } from '../charts.js';
 import {
-  change, currentRate, trend, rangePosition, freshness, verdict, rateSeries, breakGaps, notable, fmt, toCSV, windowed, time, gaps,
+  change, currentRate, trend, rangePosition, rangeWords, freshness, verdict, rateSeries, breakGaps, notable, fmt, toCSV, windowed, time, gaps,
 } from '../data.js';
 import { PRIMARY, STATIONS, SEVERITY, RULES } from '../config.js';
 
@@ -56,7 +56,10 @@ export function createOverview(ctx) {
     wl.querySelector('span').textContent = live.floodsError ? 'Flood warning status could not be checked: use GOV.UK' : v.warning.text;
     countTo($('#ov-level'), last?.[1], { digits: 2 });
     Object.assign($('#ov-trend'), { textContent: `${tr.arrow} ${tr.label}${rate != null ? ` · ${fmt.signed(rate, 1, ' cm/h')}` : ''}` }).dataset.k = tr.key;
-    Object.assign($('#ov-band'), { textContent: pos.pct == null ? pos.label : `${Math.max(0, Math.round(pos.pct))}% of typical range${pos.pct < 0 ? ' (below)' : pos.pct > 100 ? ' (above)' : ''}` }).dataset.k = pos.key;
+    Object.assign($('#ov-band'), {
+      textContent: rangeWords(pos),
+      title: pos.pct == null ? 'No EA typical range for this gauge' : `${Math.round(pos.pct)}% of the way from the EA typical low (0%) to typical high (100%)`,
+    }).dataset.k = pos.key;
     $('#ov-fresh').dataset.k = fr.key;
     $('#ov-fresh span').textContent = last ? `Observed ${fmt.time(last[0])} ${fmt.zone(last[0])}, ${fmt.date(last[0])} · ${fmt.age(fr.ageMin)} · ${fr.label}` : 'No reading available';
 
@@ -141,7 +144,7 @@ export function createOverview(ctx) {
         // Distance to the top of the typical range, worded for which side we're on.
         id: 'room', label: pos.key === 'high' ? 'Above typical high' : 'Below typical high',
         value: st?.scale?.high != null && last ? Math.abs(st.scale.high - last[1]) : null, unit: 'm', digits: 2, k: pos.key,
-        bar: pos.pct, foot: pos.pct != null ? `${Math.round(pos.pct)}% through typical range` : 'Typical range unavailable',
+        bar: pos.pct, foot: pos.pct != null ? rangeWords(pos) : 'Typical range unavailable',
         pop: `How far the latest reading is ${pos.key === 'high' ? 'above' : 'below'} the top of the EA typical range (${st?.scale?.high?.toFixed(2) ?? '—'} m). Typical range is context, not a flood threshold.`,
         go: () => ctx.openIntel('context'),
       },

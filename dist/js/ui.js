@@ -44,13 +44,14 @@ export function mountChart(el, { onReady } = {}) {
     return { set() {}, chart: null, dispose() {} };
   }
   const chart = echarts.init(el, null, { renderer: 'canvas' });
+  el.classList.add('is-empty');
   charts.add(chart);
   resizeObserver ??= new ResizeObserver(entries => entries.forEach(e => echarts.getInstanceByDom(e.target)?.resize()));
   resizeObserver.observe(el);
   onReady?.(chart);
   return {
     chart,
-    set(option, opts = { notMerge: true }) { chart.setOption(option, opts); },
+    set(option, opts = { notMerge: true }) { el.classList.remove('is-empty'); chart.setOption(option, opts); },
     dispose() { resizeObserver.unobserve(el); charts.delete(chart); chart.dispose(); },
   };
 }

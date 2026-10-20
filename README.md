@@ -15,6 +15,7 @@
 | **Explore** | Pick stations, dates and measures; click to pin notes; automatic annotations (peak, low, fastest rise/fall); playable/scrubbable animation; linked mini-map with two-way highlighting; insight list; shareable URL; CSV. |
 | **History** | EA Hydrology daily maxima since 2000: long-term chart, largest independent events (≥14 days apart), peak-aligned event overlay, year calendar heatmap, quality flags. |
 | **Flood info** (drawer) | Official warnings within 40 km with messages and GOV.UK links, observed changes at all gauges, verified reference levels, historical comparison, data confidence & freshness, official guidance and Floodline. |
+| **Demo replay** (`?demo=feb2020`) | Real EA archive readings from the February 2020 flood, shifted to now so the high-water Overview can be seen at any time. Labelled as a demo on every view; its flood warnings are illustrative. Rebuild with `python research/build_demo.py`. |
 
 Every view is URL-addressable (`?view=explore&compare=2001,2085&range=7d&metric=range&notes=…`). Keyboard: `1`–`5` switch views, `R` refreshes, `F` opens flood intelligence, `Esc` closes it. Light/dark themes; `prefers-reduced-motion` disables animation.
 

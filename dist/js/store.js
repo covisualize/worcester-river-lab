@@ -17,7 +17,9 @@ export const defaults = () => ({
   metric: 'stage',
   notes: [],                 // user annotation timestamps (epoch ms)
   intel: false,              // flood information panel open
+  demo: null,                // labelled replay of a past flood (?demo=feb2020)
 });
+export const DEMOS = ['feb2020'];
 
 const isDate = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
 
@@ -34,6 +36,7 @@ export function decode(search) {
   if (METRIC_IDS.has(p.get('metric'))) s.metric = p.get('metric');
   s.notes = (p.get('notes') || '').split(',').map(Number).filter(n => Number.isFinite(n) && n > 0).slice(0, 20);
   s.intel = p.get('intel') === '1';
+  if (DEMOS.includes(p.get('demo'))) s.demo = p.get('demo');
   return s;
 }
 
@@ -59,6 +62,7 @@ export function encode(s) {
   if (keep.has('metric') && s.metric !== d.metric) p.set('metric', s.metric);
   if (keep.has('notes') && s.notes.length) p.set('notes', s.notes.join(','));
   if (s.intel) p.set('intel', '1');
+  if (s.demo) p.set('demo', s.demo);
   const q = p.toString();
   return q ? '?' + q : '';
 }

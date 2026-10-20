@@ -152,6 +152,32 @@ test('review fixes: verdict, axis digits, staggered labels, heatmap bands, URL h
   assert.match(encode({ ...st, view: 'explore' }), /compare=2001%2C2085.*range=7d.*metric=range.*notes=/);
 });
 
+test('second review: range words, demo URL state, label backing', async () => {
+  const { rangeWords, rangePosition } = await import('../../dist/js/data.js');
+  const { refLines } = await import('../../dist/js/charts.js');
+  const sc = { low: 0.548, high: 2.8 };
+  assert.equal(rangeWords(rangePosition(0.572, sc)), 'Near typical low');
+  assert.equal(rangeWords(rangePosition(1.7, sc)), 'Middle of typical range');
+  assert.equal(rangeWords(rangePosition(2.6, sc)), 'Near typical high');
+  assert.equal(rangeWords(rangePosition(4.98, sc)), 'Above typical range');
+  assert.equal(rangeWords(rangePosition(0.4, sc)), 'Below typical range');
+  assert.equal(rangeWords(rangePosition(1, null)), 'No typical range published');
+  // The demo flag survives every view change and rejects unknown replays.
+  assert.equal(decode('?demo=feb2020').demo, 'feb2020');
+  assert.equal(decode('?demo=evil').demo, null);
+  assert.equal(encode({ ...defaults(), view: 'history', demo: 'feb2020' }), '?view=history&demo=feb2020');
+  assert.equal(refLines([{ value: 1, label: 'Latest', color: '#fff' }], T)[0].label.backgroundColor, T.surface);
+});
+
+test('demo replay data is real archive data, not invented', () => {
+  const d = JSON.parse(readFileSync(new URL('../../dist/data/demo-feb2020.json', import.meta.url)));
+  assert.match(d.source, /EA Hydrology/);
+  const dig = d.series['2085'];
+  assert.ok(dig.length > 900);
+  assert.deepEqual(dig.at(-1), [Date.parse('2020-02-16T18:00:00Z'), 4.978]);
+  for (const rows of Object.values(d.series)) for (const [t] of rows) assert.ok(t >= d.start && t <= d.now);
+});
+
 test('simulation caveat is drawn inside the chart image', () => {
   const o = simulationOption({ observed: series.slice(-10), simulated: simulateLinear(0.5, 2, 6).map(([h, v]) => [series.at(-1)[0] + h * 3600000, v]), thresholds: [], T });
   assert.ok(o.graphic.some(g => /SIMULATION, NOT A FORECAST/.test(g.style.text)));

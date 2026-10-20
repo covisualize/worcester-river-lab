@@ -110,6 +110,15 @@ export function rangePosition(value, scale) {
   return { key: 'normal', label: 'Within typical range', pct };
 }
 
+// The same position in words, for residents: "1% of typical range" reads as
+// alarming when it simply means the river is near its usual low.
+export function rangeWords(pos) {
+  if (pos?.pct == null) return pos?.label || 'No typical range published';
+  if (pos.key === 'low') return 'Below typical range';
+  if (pos.key === 'high') return 'Above typical range';
+  return pos.pct < 20 ? 'Near typical low' : pos.pct > 80 ? 'Near typical high' : 'Middle of typical range';
+}
+
 // Plain-English headline for the Overview, built only from the observed
 // position in the EA typical range, the observed trend and official warnings.
 export function verdict(pos, tr, warnings = null) {
