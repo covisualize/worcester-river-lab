@@ -229,6 +229,7 @@ try {
     assert.match(await off.page.textContent('#ov-banner'), /not current readings/);
     assert.match(await off.page.textContent('#live-status'), /Offline snapshot/);
     assert.notEqual(await off.page.textContent('#ov-level'), '—');
+    assert.match(await off.page.textContent('#ov-verdict'), /^Not current · last reading was /);
   });
   await off.context.close();
 

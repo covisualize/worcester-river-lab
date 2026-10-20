@@ -47,7 +47,10 @@ export function createOverview(ctx) {
 
     // Answer first: verdict, then official warnings, then the number.
     const v = verdict(last ? pos : { key: 'unknown' }, tr, live.floods ? live.floods.items : live.floodsError ? [] : null);
-    Object.assign($('#ov-verdict'), { textContent: last ? v.headline : 'No recent reading' }).dataset.k = v.key;
+    // Never present a snapshot or delayed reading as the river's current state.
+    const old = live.status.mode === 'snapshot' || fr.key === 'stale';
+    const head = !last ? 'No recent reading' : old ? `Not current · last reading was ${v.headline.toLowerCase()}` : v.headline;
+    Object.assign($('#ov-verdict'), { textContent: head }).dataset.k = last && old ? 'unknown' : v.key;
     const wl = $('#ov-warnline');
     wl.dataset.k = live.floodsError ? 'unknown' : v.warning.key;
     wl.querySelector('span').textContent = live.floodsError ? 'Flood warning status could not be checked: use GOV.UK' : v.warning.text;
