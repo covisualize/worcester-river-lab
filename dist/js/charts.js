@@ -58,9 +58,35 @@ const tooltipBase = T => ({
 const axisCommon = T => ({
   axisLine: { lineStyle: { color: T.line } },
   axisTick: { show: false },
-  axisLabel: { color: T.muted, fontSize: 11, hideOverlap: true },
+  axisLabel: { color: T.muted, fontSize: 12, hideOverlap: true },
   splitLine: { lineStyle: { color: T.grid } },
 });
+
+// Axis decimals from the visible span: a 2 cm range at 2 dp repeats ticks.
+export function levelDigits(values) {
+  const v = values.filter(Number.isFinite);
+  if (!v.length) return 2;
+  const span = Math.max(...v) - Math.min(...v);
+  return span < 0.1 ? 3 : span < 2 ? 2 : 1;
+}
+
+// Horizontal reference lines whose labels would collide are staggered:
+// alternately right-above, left-above and right-below the line.
+export function refLines(lines, T, values = [], { fmtValue = v => `${v.toFixed(2)} m`, dashed = true } = {}) {
+  const all = [...values, ...lines.map(l => l.value)].filter(Number.isFinite);
+  const extent = all.length ? Math.max(...all) - Math.min(...all) || 1 : 1;
+  const sorted = lines.filter(l => Number.isFinite(l.value)).sort((a, b) => a.value - b.value);
+  const positions = ['insideEndTop', 'insideStartTop', 'insideEndBottom', 'insideStartBottom'];
+  let slot = 0;
+  return sorted.map((l, i) => {
+    slot = i && (l.value - sorted[i - 1].value) / extent < 0.08 ? (slot + 1) % positions.length : 0;
+    return {
+      yAxis: l.value, name: l.label,
+      lineStyle: { color: l.color, type: l.dashed === false || !dashed ? 'solid' : 'dashed', width: 1.2 },
+      label: { formatter: l.text ?? `${l.label} ${fmtValue(l.value)}`, position: positions[slot], color: l.color, fontSize: 11 },
+    };
+  });
+}
 
 const dot = c => `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c};margin-right:6px"></span>`;
 
@@ -75,6 +101,7 @@ export function timeSeriesOption({
   const span = spanIn ?? (all.length ? all[all.length - 1][0] - all[0][0] : time.DAY);
   const rateById = Object.fromEntries(series.map(s => [s.id, s.raw ? rateSeries(s.raw) : []]));
   const single = series.length === 1;
+  const digits = metric === 'stage' ? levelDigits(all.map(p => p[1])) : null;
   const out = {
     ...base(T, animate, describeSeries(series, { metric })),
     color: series.map(s => s.color),
@@ -104,7 +131,7 @@ export function timeSeriesOption({
     yAxis: {
       type: 'value', scale: metric !== 'range', ...axisCommon(T),
       name: compact ? '' : M.unit, nameTextStyle: { color: T.muted, fontSize: 11, align: 'right' },
-      axisLabel: { ...axisCommon(T).axisLabel, formatter: v => (metric === 'stage' ? v.toFixed(2) : metric === 'aod' ? v.toFixed(1) : String(Math.round(v * 10) / 10)) },
+      axisLabel: { ...axisCommon(T).axisLabel, formatter: v => (metric === 'stage' ? v.toFixed(digits) : metric === 'aod' ? v.toFixed(1) : String(Math.round(v * 10) / 10)) },
     },
     dataZoom: [
       { type: 'inside', filterMode: 'none', zoomOnMouseWheel: 'shift', moveOnMouseMove: true, ...(zoom || {}) },
@@ -128,7 +155,7 @@ export function timeSeriesOption({
       markLine: i === 0 && (thresholds.length || userNotes.length) ? {
         silent: false, symbol: 'none', animation: false,
         data: [
-          ...thresholds.map(th => ({ yAxis: th.value, name: th.label, lineStyle: { color: th.color, type: th.dashed ? 'dashed' : 'solid', width: 1.2 }, label: { show: !compact, formatter: `${th.label} ${th.value.toFixed(2)} m`, position: 'insideEndTop', color: th.color, fontSize: 10 } })),
+          ...(compact ? [] : refLines(thresholds, T, all.map(p => p[1]))),
           ...userNotes.map(t => ({ xAxis: t, name: 'Your note', lineStyle: { color: T.accent, type: 'dotted', width: 1.5 }, label: { formatter: `📌 ${fmt.dateTime(t)}`, position: 'insideEndTop', color: T.accent, fontSize: 10 } })),
         ],
       } : undefined,
@@ -191,13 +218,13 @@ export function rangeBarsOption({ rows, T, animate = true }) {
         return `<b>${esc(r.name)}</b> · ${esc(r.river)}<br>Latest ${r.value?.toFixed(3) ?? '—'} m (${esc(r.when)})<br>Typical range ${r.low?.toFixed(2)}–${r.high?.toFixed(2)} m<br><b>${p.value == null ? 'Not available' : p.value.toFixed(0) + '% of the way through its typical range'}</b><br><span style="color:${T.muted}">0% = bottom of typical range, 100% = top. Datum-independent, so gauges can be compared.</span>`;
       },
     },
-    xAxis: { type: 'value', min: v => Math.min(-10, Math.floor(v.min / 10) * 10), max: v => Math.max(110, Math.ceil(v.max / 10) * 10), ...axisCommon(T), axisLabel: { ...axisCommon(T).axisLabel, formatter: '{value}%' } },
+    xAxis: { type: 'value', min: v => Math.min(-10, Math.floor(v.min / 10) * 10), max: v => Math.max(110, Math.ceil(v.max / 10) * 10), ...axisCommon(T), axisLabel: { ...axisCommon(T).axisLabel, formatter: v => (v === 0 ? '0%\ntypical low' : v === 100 ? '100%\ntypical high' : `${v}%`) } },
     yAxis: { type: 'category', inverse: true, data: rows.map(r => r.name), ...axisCommon(T), splitLine: { show: false }, axisLabel: { color: T.text, fontSize: 12 } },
     series: [{
       type: 'bar', data: data.map(d => ({ ...d, itemStyle: { color: color(d.value), borderRadius: 4 } })), barMaxWidth: 18,
       label: { show: true, position: 'right', color: T.text, fontSize: 11, formatter: p => (p.value == null ? 'n/a' : `${Math.round(p.value)}%`) },
-      markArea: { silent: true, itemStyle: { color: T.accentSoft }, data: [[{ xAxis: 0, name: 'Typical range' }, { xAxis: 100 }]], label: { color: T.muted, fontSize: 10, position: 'insideTop' } },
-      markLine: { silent: true, symbol: 'none', lineStyle: { color: T.muted, type: 'dashed' }, data: [{ xAxis: 0 }, { xAxis: 100 }], label: { formatter: p => (p.value === 0 ? 'Typical low' : 'Typical high'), color: T.muted, fontSize: 10 } },
+      markArea: { silent: true, itemStyle: { color: T.accentSoft }, data: [[{ xAxis: 0 }, { xAxis: 100 }]], label: { show: false } },
+      markLine: { silent: true, symbol: 'none', lineStyle: { color: T.muted, type: 'dashed' }, data: [{ xAxis: 0 }, { xAxis: 100 }], label: { show: false } },
     }],
   };
 }
@@ -230,7 +257,7 @@ export function rainLevelOption({ rain, level, T, animate = true, rainName, leve
     ],
     yAxis: [
       { type: 'value', gridIndex: 0, inverse: true, name: 'mm/h', nameLocation: 'start', ...axisCommon(T), nameTextStyle: { color: T.muted, fontSize: 11 } },
-      { type: 'value', gridIndex: 1, scale: true, name: 'm', ...axisCommon(T), nameTextStyle: { color: T.muted, fontSize: 11 }, axisLabel: { ...axisCommon(T).axisLabel, formatter: v => v.toFixed(2) } },
+      { type: 'value', gridIndex: 1, scale: true, name: 'm', ...axisCommon(T), nameTextStyle: { color: T.muted, fontSize: 11 }, axisLabel: { ...axisCommon(T).axisLabel, formatter: v => v.toFixed(levelDigits(level.map(p => p[1]))) } },
     ],
     dataZoom: [{ type: 'inside', xAxisIndex: [0, 1], filterMode: 'none', zoomOnMouseWheel: 'shift' }, { type: 'slider', xAxisIndex: [0, 1], height: 24, bottom: 12, borderColor: T.line, fillerColor: T.accentSoft, handleStyle: { color: T.accent }, textStyle: { color: T.muted, fontSize: 10 }, labelFormatter: v => fmt.dateTime(v), showDataShadow: false }],
     series: [
@@ -262,7 +289,7 @@ export function archiveOption({ series, T, animate = true, thresholds = [], even
     dataZoom: [{ type: 'inside', filterMode: 'none', zoomOnMouseWheel: 'shift', ...(zoom || {}) }, { type: 'slider', height: 30, bottom: 14, brushSelect: true, borderColor: T.line, fillerColor: T.accentSoft, handleStyle: { color: T.accent }, textStyle: { color: T.muted, fontSize: 10 }, labelFormatter: v => fmt.dateYear(v), ...(zoom || {}) }],
     series: series.map((s, i) => ({
       name: s.name, type: 'line', data: s.data, showSymbol: false, sampling: 'lttb', lineStyle: { width: 1.4, color: s.color },
-      markLine: i === 0 && thresholds.length ? { silent: true, symbol: 'none', data: thresholds.map(th => ({ yAxis: th.value, lineStyle: { color: th.color, type: 'dashed' }, label: { formatter: th.label, color: th.color, fontSize: 10, position: 'insideEndTop' } })) } : undefined,
+      markLine: i === 0 && thresholds.length ? { silent: true, symbol: 'none', data: refLines(thresholds.map(th => ({ ...th, text: th.label })), T, s.data.map(p => p[1])) } : undefined,
       markPoint: i === 0 && events.length ? {
         symbol: 'circle', symbolSize: 9, itemStyle: { color: T.rise, borderColor: T.surface, borderWidth: 2 },
         data: events.map((e, k) => ({ coord: [e.t, e.value], name: `#${k + 1}`, label: { show: k < 5, formatter: `#${k + 1}`, position: 'top', color: T.text, fontSize: 10 } })),
@@ -292,7 +319,7 @@ export function eventsOverlayOption({ events, T, animate = true, reference = [] 
     series: [
       ...events.map(e => ({ name: e.name, type: 'line', data: e.data, smooth: false, showSymbol: false, lineStyle: { width: 2 }, emphasis: { focus: 'series' } })),
       ...(reference.length ? [{
-        name: 'Reference levels', type: 'line', data: [], markLine: { silent: true, symbol: 'none', data: reference.map(r => ({ yAxis: r.value, lineStyle: { color: r.color, type: 'dashed' }, label: { formatter: r.label, color: r.color, fontSize: 10, position: 'insideEndTop' } })) },
+        name: 'Reference levels', type: 'line', data: [], markLine: { silent: true, symbol: 'none', data: refLines(reference.map(r => ({ ...r, text: r.label })), T, events.flatMap(e => e.data.map(p => p[1]))) },
       }] : []),
     ],
   };
@@ -300,30 +327,39 @@ export function eventsOverlayOption({ events, T, animate = true, reference = [] 
 
 /* ---------- 7. Calendar heatmap of daily maxima ---------- */
 
-export function calendarOption({ year, rows, T, animate = true, low, high, narrow = false }) {
+// Days coloured by where the daily maximum sat relative to the gauge's EA
+// reference levels, so low water is clearly visible and blank means no data.
+export function calendarOption({ year, rows, T, animate = true, low, high, highestRecent, narrow = false }) {
   const data = rows.filter(r => r[0].startsWith(String(year))).map(r => [r[0], r[1]]);
-  const vals = data.map(d => d[1]);
   const top = data.reduce((m, d) => (d[1] > (m?.[1] ?? -Infinity) ? d : m), null);
   const desc = data.length
-    ? `Calendar of daily maximum river level in ${year}, ${data.length} days with data. Highest ${num(top[1], 2)} metres on ${fmt.dateYear(Date.parse(top[0] + 'T12:00:00Z'))}.`
+    ? `Calendar of daily maximum river level in ${year}, ${data.length} days with data, coloured by position relative to the EA typical range. Highest ${num(top[1], 2)} metres on ${fmt.dateYear(Date.parse(top[0] + 'T12:00:00Z'))}. Blank days have no data.`
     : `Calendar for ${year}: no data.`;
+  const c = i => T.sequential[Math.min(i, T.sequential.length - 1)];
+  const haveRange = Number.isFinite(low) && Number.isFinite(high);
+  const mid = haveRange ? (low + high) / 2 : null;
+  const hr = Number.isFinite(highestRecent) ? highestRecent : null;
+  const pieces = haveRange ? [
+    { lt: low, label: `Below typical (< ${low.toFixed(2)} m)`, color: c(0) },
+    { gte: low, lt: mid, label: 'Lower half of typical range', color: c(1) },
+    { gte: mid, lte: high, label: 'Upper half of typical range', color: c(2) },
+    hr != null ? { gt: high, lt: hr, label: `Above typical (> ${high.toFixed(2)} m)`, color: c(3) } : { gt: high, label: `Above typical (> ${high.toFixed(2)} m)`, color: c(3) },
+    ...(hr != null ? [{ gte: hr, label: `At/above highest recent (${hr.toFixed(2)} m)`, color: c(4) }] : []),
+  ] : null;
   return {
     ...base(T, animate, desc),
     tooltip: { ...tooltipBase(T), formatter: p => `<b>${esc(fmt.dateYear(Date.parse(p.value[0] + 'T12:00:00Z')))}</b><br>Daily max ${p.value[1].toFixed(3)} m` },
-    visualMap: {
-      min: Math.min(...vals, low ?? Infinity), max: Math.max(...vals, high ?? -Infinity), calculable: true, orient: 'horizontal', left: 'center', bottom: 0,
-      inRange: { color: T.sequential }, textStyle: { color: T.muted, fontSize: 10 }, formatter: v => v.toFixed(1) + ' m', itemHeight: 140,
-    },
+    visualMap: pieces
+      ? { type: 'piecewise', pieces, orient: 'horizontal', left: 'center', bottom: 0, itemGap: 12, itemWidth: 14, itemHeight: 10, textStyle: { color: T.text, fontSize: 11 } }
+      : { min: Math.min(...data.map(d => d[1])), max: Math.max(...data.map(d => d[1])), orient: 'horizontal', left: 'center', bottom: 0, inRange: { color: T.sequential }, textStyle: { color: T.muted, fontSize: 11 } },
     calendar: {
-      range: String(year), top: 30, left: narrow ? 26 : 40, right: 10, bottom: 60, cellSize: ['auto', narrow ? 9 : 14],
-      orient: 'horizontal', splitLine: { lineStyle: { color: T.line } }, itemStyle: { borderColor: T.bg, borderWidth: 1.5, color: T.surface2 },
-      yearLabel: { show: false }, monthLabel: { color: T.muted, fontSize: 10, nameMap: 'EN' }, dayLabel: { color: T.muted, fontSize: 9, firstDay: 1, nameMap: ['S', 'M', 'T', 'W', 'T', 'F', 'S'] },
+      range: String(year), top: 30, left: narrow ? 26 : 40, right: 10, bottom: narrow ? 90 : 60, cellSize: ['auto', narrow ? 9 : 14],
+      orient: 'horizontal', splitLine: { lineStyle: { color: T.line } }, itemStyle: { borderColor: T.line, borderWidth: 1, color: 'transparent' },
+      yearLabel: { show: false }, monthLabel: { color: T.muted, fontSize: 11, nameMap: 'EN' }, dayLabel: { color: T.muted, fontSize: 10, firstDay: 1, nameMap: ['S', 'M', 'T', 'W', 'T', 'F', 'S'] },
     },
-    series: [{ type: 'heatmap', coordinateSystem: 'calendar', data }],
+    series: [{ type: 'heatmap', coordinateSystem: 'calendar', data, itemStyle: { borderColor: T.bg, borderWidth: 1 } }],
   };
 }
-
-/* ---------- 8. Scenario simulator (hypothetical) ---------- */
 
 export function simulationOption({ observed, simulated, thresholds, T, animate = true }) {
   const span = (simulated.at(-1)?.[0] ?? 0) - (observed[0]?.[0] ?? 0);
@@ -331,8 +367,13 @@ export function simulationOption({ observed, simulated, thresholds, T, animate =
   const desc = `Simulation chart, hypothetical and not a forecast. Observed level up to ${observed.length ? fmt.dateTime(observed[observed.length - 1][0]) : 'now'}, then a straight-line what-if reaching ${end ? num(end[1], 2) : 'unavailable'} metres at ${end ? fmt.dateTime(end[0]) : 'the end'}.`;
   return {
     ...base(T, animate, desc),
-    grid: { left: 52, right: 20, top: 30, bottom: 40 },
+    grid: { left: 52, right: 20, top: 58, bottom: 40 },
     legend: { top: 0, textStyle: { color: T.text, fontSize: 11 } },
+    // The caveat is part of the image, so it survives screenshots.
+    graphic: [
+      { type: 'text', left: 56, top: 24, style: { text: 'SIMULATION, NOT A FORECAST · assumes a constant rate; real rivers do not behave like this', fill: T.sim, font: `600 12px ${T.font}` } },
+      { type: 'text', left: 'center', top: 'middle', rotation: Math.PI / 12, silent: true, style: { text: 'HYPOTHETICAL', fill: T.sim, opacity: 0.12, font: `700 46px ${T.font}` } },
+    ],
     tooltip: { ...tooltipBase(T), trigger: 'axis', formatter: ps => `<b>${esc(fmt.full(ps[0].value[0]))}</b><br>` + ps.filter(p => p.value[1] != null).map(p => `${dot(p.color)}${esc(p.seriesName)}: <b>${p.value[1].toFixed(3)} m</b>`).join('<br>') },
     xAxis: { type: 'time', ...axisCommon(T), splitLine: { show: false }, axisLabel: { ...axisCommon(T).axisLabel, formatter: timeLabel(span), rich: { d: { fontWeight: 'bold', color: T.text } } } },
     yAxis: { type: 'value', scale: true, name: 'm', ...axisCommon(T), nameTextStyle: { color: T.muted } },
@@ -341,7 +382,7 @@ export function simulationOption({ observed, simulated, thresholds, T, animate =
       {
         name: 'SIMULATION (hypothetical)', type: 'line', data: simulated, showSymbol: false, lineStyle: { color: T.sim, width: 2, type: [6, 4] }, itemStyle: { color: T.sim },
         areaStyle: { color: T.sim, opacity: 0.06 },
-        markLine: { silent: true, symbol: 'none', data: thresholds.map(th => ({ yAxis: th.value, lineStyle: { color: th.color, type: 'dashed' }, label: { formatter: `${th.label} ${th.value.toFixed(2)} m`, color: th.color, fontSize: 10, position: 'insideEndTop' } })) },
+        markLine: { silent: true, symbol: 'none', data: refLines(thresholds, T, [...observed, ...simulated].map(p => p[1])) },
       },
     ],
   };
@@ -387,10 +428,10 @@ export function gaugeSVG({ value, scale, T, label = 'Latest level' }) {
     if (!text) { const [a1, b1] = pt(v, r - 10), [a2, b2] = pt(v, r + 10); return `<line x1="${a1.toFixed(1)}" y1="${b1.toFixed(1)}" x2="${a2.toFixed(1)}" y2="${b2.toFixed(1)}" stroke="${color}" stroke-width="2.5"/>`; }
     const [x1, y1] = pt(v, r - 10), [x2, y2] = pt(v, r + 12), [tx, ty] = pt(v, outside ? r + 26 : r - 30);
     const anchor = tx < cx - 10 ? 'end' : tx > cx + 10 ? 'start' : 'middle';
-    return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${color}" stroke-width="2"/><text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="${anchor}" font-size="10.5" fill="${color}">${esc(text)}</text>`;
+    return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${color}" stroke-width="2"/><text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="${anchor}" font-size="12" fill="${color}">${esc(text)}</text>`;
   };
   const deg = value == null ? -90 : -90 + (1 - ang(value) / Math.PI) * 180;
-  return `<svg viewBox="-44 0 408 196" class="gauge" role="img" aria-label="${esc(label)}: ${value == null ? 'unavailable' : value.toFixed(2) + ' metres'}. Typical range ${low ?? '?'} to ${high ?? '?'} metres; highest recent ${hr ?? '?'} m; maximum on record ${rec ?? '?'} m.">
+  return `<svg viewBox="-60 0 440 196" class="gauge" role="img" aria-label="${esc(label)}: ${value == null ? 'unavailable' : value.toFixed(2) + ' metres'}. Typical range ${low ?? '?'} to ${high ?? '?'} metres; highest recent ${hr ?? '?'} m; maximum on record ${rec ?? '?'} m.">
   ${bands}
   ${tick(low, `Typical low ${low?.toFixed(2)}`, T.muted)}${tick(high, `Typical high ${high?.toFixed(2)}`, T.text)}${tick(hr, '', T.alert)}${tick(rec, '', T.severe)}
   <text x="${cx - r}" y="${cy + 18}" text-anchor="middle" font-size="10" fill="${T.muted}">${min.toFixed(0)} m</text><text x="${cx + r}" y="${cy + 18}" text-anchor="middle" font-size="10" fill="${T.muted}">${max.toFixed(1)} m</text>

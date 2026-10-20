@@ -110,7 +110,7 @@ export function createIntel(ctx) {
     btn.dataset.k = top ? SEVERITY[top.severityLevel].key : 'clear';
     b.hidden = !active.length;
     b.textContent = active.length;
-    btn.title = live.floods ? `${active.length} flood warning(s)/alert(s) in force within ${RULES.warningRadiusKm} km` : 'Flood intelligence';
+    btn.title = live.floods ? `${active.length} flood warning(s)/alert(s) in force within ${RULES.warningRadiusKm} km` : 'Flood information';
   }
 
   async function loadArchive() {

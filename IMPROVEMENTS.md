@@ -25,6 +25,8 @@ Anything broken here takes priority over the backlog.
       5 views in both themes; chart screen-reader summaries; regression test in e2e.
 - [ ] Accessibility follow-up: manual screen-reader pass (VoiceOver/NVDA) over the map
       panel and Explore playback; a visible "skip to chart data" table option.
+- [ ] Fallback snapshot covers only 2 of 7 gauges, and outage banner shows the raw error
+      ("Failed to fetch"); seen in the 20 Oct EA outage.
 - [ ] Performance: Lighthouse on mobile; consider lazy-loading ECharts/Leaflet per view,
       and pre-compressing `dist/data/archive-daily.json`.
 - [ ] Chart time-axis ticks follow the viewer's local timezone; make tick placement
@@ -46,6 +48,15 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-10-20 — external review — Actioned a usability review: Overview now answer-first
+  (verdict, official-warning line, then the number with % of typical range); "Unofficial
+  site, use GOV.UK" line at the warnings card; "intelligence" wording removed; staggered
+  reference-line labels; axis decimals from data span; heatmap coloured by EA reference
+  bands with blank no-data days; 44 px touch targets and bottom-nav clearance; URL carries
+  only the current view's state; archive lag stated; delayed-gauge wording; simulator
+  collapsed with its caveat drawn on the chart. New e2e replay of a high-water state
+  (Feb 2020 peak + TEST Flood Warning), which also caught a "Below typical high −2.47 m" bug.
+  (Earlier that day: EA real-time API outage 06:52–~08:30 UTC; site correctly fell back.)
 - 2026-10-19 — daily/2026-10-19-accessibility — Health: site live on desktop+mobile, no
   console errors; all 7 gauges reporting (22–37 min old); no warnings in force; EA API
   shapes unchanged; Pages deploy and Monday's scheduled data refresh green. Change:

@@ -40,24 +40,34 @@ const TEST_ALERT = {
 };
 const POLY = { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[[-2.24, 52.18], [-2.22, 52.18], [-2.22, 52.2], [-2.24, 52.18]]] } }] };
 
-function eaResponse(url, { withAlert }) {
+// TEST-ONLY high-water scenario: the real Feb 2020 peak at Diglis (daily max
+// 5.27 m, EA archive) replayed by shifting the captured Diglis readings up so
+// the latest equals that peak, with a TEST Flood Warning. Never shipped.
+const FEB_2020_PEAK = 5.27;
+const TEST_WARNING = { ...TEST_ALERT, floodAreaID: '031FWFSE440', description: 'River Severn at Hylton Road, Worcester (TEST FIXTURE)', severity: 'Flood warning', severityLevel: 2 };
+
+function eaResponse(url, { withAlert, scenario }) {
   const u = new URL(url);
   const p = u.pathname;
   let m;
   if ((m = p.match(/\/id\/stations\/(\w+)\.json$/))) return fx.stations[m[1]] ? { items: fx.stations[m[1]] } : null;
   if ((m = p.match(/\/id\/measures\/([^/]+)\/readings$/))) {
     const since = Date.parse(u.searchParams.get('since') || 0);
-    const rows = (fx.readings[m[1]] || []).filter(r => Date.parse(r.dateTime) >= since);
+    let rows = (fx.readings[m[1]] || []).filter(r => Date.parse(r.dateTime) >= since);
+    if (scenario === 'high' && m[1].startsWith('2085-')) {
+      const shift = FEB_2020_PEAK - fx.readings[m[1]][0].value;
+      rows = rows.map(r => ({ ...r, value: +(r.value + shift).toFixed(3) }));
+    }
     return { items: rows.map(r => ({ ...r, measure: `http://environment.data.gov.uk/flood-monitoring/id/measures/${m[1]}` })) };
   }
-  if (p.endsWith('/id/floods')) return { items: withAlert ? [TEST_ALERT] : [] };
+  if (p.endsWith('/id/floods')) return { items: scenario === 'high' ? [TEST_WARNING, TEST_ALERT] : withAlert ? [TEST_ALERT] : [] };
   if (p.endsWith('/id/floodAreas')) return { items: [{ notation: '031FWFSE440', label: 'River Severn at Hylton Road, Worcester', riverOrSea: 'River Severn', lat: 52.19, long: -2.23, polygon: 'http://environment.data.gov.uk/flood-monitoring/id/floodAreas/031FWFSE440/polygon' }] };
   if (p.endsWith('/polygon')) return POLY;
   if (u.hostname === 'environment.data.gov.uk') return { items: [] };
   return null;
 }
 
-async function open(browser, { path = '/', viewport, device, offline = false, withAlert = true } = {}) {
+async function open(browser, { path = '/', viewport, device, offline = false, withAlert = true, scenario = null } = {}) {
   const context = await browser.newContext(device ? { ...devices[device] } : { viewport: viewport || { width: 1400, height: 950 } });
   const page = await context.newPage();
   await page.clock.setFixedTime(NOW);
@@ -72,7 +82,7 @@ async function open(browser, { path = '/', viewport, device, offline = false, wi
       try { return route.fulfill({ body: await readFile(join(root, p)), contentType: types[extname(p)] || 'application/octet-stream' }); } catch { return route.fulfill({ status: 404 }); }
     }
     if (offline) return route.abort('internetdisconnected');
-    const body = eaResponse(url, { withAlert });
+    const body = eaResponse(url, { withAlert, scenario });
     return body ? route.fulfill({ json: body }) : route.abort();
   });
   await page.goto(ORIGIN + path);
@@ -97,6 +107,10 @@ try {
     const summary = await page.textContent('#ov-summary');
     assert.match(summary, /The Severn at Diglis is/);
     assert.match(summary, /1 flood alert/);
+    assert.match(await page.textContent('#ov-verdict'), /^(Normal|Low|High) and (steady|rising|falling)$|^(Normal|Low|High)$/);
+    assert.match(await page.textContent('#ov-warnline'), /Flood alert in force nearby/);
+    assert.match(await page.textContent('#ov-band'), /% of typical range/);
+    assert.match(await page.textContent('#ov-warn .unofficial'), /Unofficial site/);
     assert.equal(await page.locator('.kpi').count(), 6);
     assert.equal(await page.locator('#st-grid .station').count(), 7);
     assert.ok(!(await page.textContent('main')).includes('NaN'));
@@ -180,6 +194,33 @@ try {
 
   await step('no runtime errors on desktop', () => assert.deepEqual(errors, []));
 
+  await step('shared links only carry the current view\'s state', async () => {
+    await page.goto(`${ORIGIN}/?view=explore&compare=2001,2085&range=7d`);
+    await waitLive(page);
+    await page.click('.primary-nav [data-nav="map"]');
+    await page.waitForFunction(() => location.search.includes('view=map'));
+    assert.ok(!/compare=|range=/.test(await page.evaluate(() => location.search)), await page.evaluate(() => location.search));
+  });
+
+  /* ---------- High water + official warning (replayed Feb 2020 peak) ---------- */
+  const hi = await open(browser, { scenario: 'high' });
+  await step('high-water replay: Overview leads with the verdict and the official warning', async () => {
+    await waitLive(hi.page);
+    await hi.page.waitForFunction(() => /^High/.test(document.querySelector('#ov-verdict').textContent), null, { timeout: 8000 });
+    assert.equal(await hi.page.getAttribute('#ov-verdict', 'data-k'), 'severe');
+    assert.match(await hi.page.textContent('#ov-warnline'), /Flood warning in force nearby/);
+    assert.match(await hi.page.textContent('#ov-summary'), /above.*typical range/);
+    assert.match(await hi.page.textContent('#ov-summary'), /1 flood warning and 1 flood alert/);
+    assert.match(await hi.page.textContent('#ov-warn-title'), /2 warnings\/alerts in force/);
+    assert.match(await hi.page.textContent('#ov-band'), /% of typical range \(above\)/);
+    assert.match(await hi.page.textContent('.kpi[data-id="room"]'), /Above typical high\s*2\.47/);
+    await hi.page.waitForFunction(() => !document.querySelector('.toast'), null, { timeout: 6000 }).catch(() => {});
+    assert.deepEqual(await axeViolations(hi.page), []);
+    if (process.env.E2E_SHOTS) await hi.page.screenshot({ path: `${process.env.E2E_SHOTS}/high-water.png` });
+  });
+  await step('no runtime errors in the high-water replay', () => assert.deepEqual(hi.errors, []));
+  await hi.context.close();
+
   /* ---------- Offline: falls back to the labelled snapshot ---------- */
   const off = await open(browser, { offline: true });
   await step('offline mode shows the saved snapshot with a clear warning', async () => {
@@ -188,6 +229,7 @@ try {
     assert.match(await off.page.textContent('#ov-banner'), /not current readings/);
     assert.match(await off.page.textContent('#live-status'), /Offline snapshot/);
     assert.notEqual(await off.page.textContent('#ov-level'), '—');
+    assert.match(await off.page.textContent('#ov-verdict'), /^Not current · last reading was /);
   });
   await off.context.close();
 

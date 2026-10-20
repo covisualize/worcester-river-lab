@@ -16,7 +16,7 @@ export const defaults = () => ({
   to: null,
   metric: 'stage',
   notes: [],                 // user annotation timestamps (epoch ms)
-  intel: false,              // flood intelligence panel open
+  intel: false,              // flood information panel open
 });
 
 const isDate = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
@@ -37,16 +37,27 @@ export function decode(search) {
   return s;
 }
 
+// Only the choices that the current view actually uses go into the URL, so a
+// shared link never carries stale state from another tab.
+const VIEW_PARAMS = {
+  overview: ['range'],
+  map: ['station'],
+  analysis: ['station', 'compare', 'range', 'metric'],
+  explore: ['station', 'compare', 'range', 'metric', 'notes'],
+  history: ['station'],
+};
+
 export function encode(s) {
   const d = defaults();
+  const keep = new Set(VIEW_PARAMS[s.view] || []);
   const p = new URLSearchParams();
   if (s.view !== d.view) p.set('view', s.view);
-  if (s.station !== d.station) p.set('station', s.station);
-  if (s.compare.join(',') !== d.compare.join(',')) p.set('compare', s.compare.join(','));
-  if (s.range !== d.range) p.set('range', s.range);
-  if (s.range === 'custom' && s.from && s.to) { p.set('from', s.from); p.set('to', s.to); }
-  if (s.metric !== d.metric) p.set('metric', s.metric);
-  if (s.notes.length) p.set('notes', s.notes.join(','));
+  if (keep.has('station') && s.station !== d.station) p.set('station', s.station);
+  if (keep.has('compare') && s.compare.join(',') !== d.compare.join(',')) p.set('compare', s.compare.join(','));
+  if (keep.has('range') && s.range !== d.range) p.set('range', s.range);
+  if (keep.has('range') && s.range === 'custom' && s.from && s.to) { p.set('from', s.from); p.set('to', s.to); }
+  if (keep.has('metric') && s.metric !== d.metric) p.set('metric', s.metric);
+  if (keep.has('notes') && s.notes.length) p.set('notes', s.notes.join(','));
   if (s.intel) p.set('intel', '1');
   const q = p.toString();
   return q ? '?' + q : '';

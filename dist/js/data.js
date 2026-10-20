@@ -110,6 +110,23 @@ export function rangePosition(value, scale) {
   return { key: 'normal', label: 'Within typical range', pct };
 }
 
+// Plain-English headline for the Overview, built only from the observed
+// position in the EA typical range, the observed trend and official warnings.
+export function verdict(pos, tr, warnings = null) {
+  const level = { normal: 'Normal', low: 'Low', high: 'High', unknown: 'Level unknown' }[pos?.key] || 'Level unknown';
+  const motion = { steady: 'steady', rising: 'rising', falling: 'falling' }[tr?.key];
+  const headline = pos?.key === 'unknown' || !pos ? level : motion ? `${level} and ${motion}` : level;
+  const active = (warnings || []).filter(w => w.severityLevel <= 3);
+  const worst = active.length ? Math.min(...active.map(w => w.severityLevel)) : null;
+  let warning;
+  if (warnings == null) warning = { key: 'unknown', text: 'Flood warning status not yet checked' };
+  else if (worst === 1) warning = { key: 'severe', text: `Severe flood warning in force nearby` };
+  else if (worst === 2) warning = { key: 'warning', text: `Flood warning in force nearby` };
+  else if (worst === 3) warning = { key: 'alert', text: `Flood alert in force nearby` };
+  else warning = { key: 'clear', text: 'No flood warnings in force nearby' };
+  return { headline, key: worst && worst <= 2 ? 'severe' : worst === 3 ? 'alert' : pos?.key || 'unknown', warning };
+}
+
 // Derived height above Ordnance Datum: stage + EA stage-scale datum (which the
 // EA API documents as "the datum level for the measurement point on OS datum").
 export const toAOD = (value, scale) => (scale && Number.isFinite(scale.datum) ? value + scale.datum : null);
