@@ -146,6 +146,7 @@ input[type="range"] { accent-color: var(--accent); }
 .status-pill[data-mode="live"] i { background: var(--ok); box-shadow: 0 0 0 0 var(--ok); animation: pulse 2.4s infinite; }
 .status-pill[data-mode="stale"] i, .status-pill[data-mode="recent"] i { background: var(--alert); }
 .status-pill[data-mode="snapshot"] i, .status-pill[data-mode="error"] i { background: var(--severe); }
+.status-pill[data-mode="demo"] i { background: var(--sim); }
 .status-pill[data-mode="loading"] i { background: var(--muted); animation: blink 1s infinite; }
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 60%, transparent); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
 @keyframes blink { 50% { opacity: .3; } }
@@ -564,4 +565,16 @@ main { max-width: 1320px; margin: 0 auto; padding: 22px 20px 40px; outline: none
 @media print {
   .topbar, .bottom-nav, .drawer, .scrim, .tools, .map-shell { display: none !important; }
   body { background: #fff; color: #000; }
+}
+
+/* Demo replay: impossible to mistake for live conditions. */
+.demo-banner { position: sticky; top: 0; z-index: 40; margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; border: 2px solid var(--sim); background: color-mix(in srgb, var(--sim) 14%, var(--surface)); color: var(--text); font-size: 14px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+.demo-banner b { letter-spacing: .04em; }
+.demo-banner a { color: var(--text); font-weight: 600; }
+.demo-link { font-size: 13px; color: var(--muted); }
+.demo-link:hover { color: var(--text); }
+.ex-stations input { width: 18px; height: 18px; margin: 0; flex: none; }
+.chart.is-empty.is-loading::before { content: "Loading readings…"; position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 13px; z-index: 1; pointer-events: none; }
+@media (pointer: coarse), (max-width: 640px) {
+  .ex-stations label, .map-layers label { min-height: 44px; }
 }

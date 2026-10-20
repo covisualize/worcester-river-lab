@@ -110,6 +110,15 @@ export function rangePosition(value, scale) {
   return { key: 'normal', label: 'Within typical range', pct };
 }
 
+// The same position in words, for residents: "1% of typical range" reads as
+// alarming when it simply means the river is near its usual low.
+export function rangeWords(pos) {
+  if (pos?.pct == null) return pos?.label || 'No typical range published';
+  if (pos.key === 'low') return 'Below typical range';
+  if (pos.key === 'high') return 'Above typical range';
+  return pos.pct < 20 ? 'Near typical low' : pos.pct > 80 ? 'Near typical high' : 'Middle of typical range';
+}
+
 // Plain-English headline for the Overview, built only from the observed
 // position in the EA typical range, the observed trend and official warnings.
 export function verdict(pos, tr, warnings = null) {
@@ -375,6 +384,20 @@ export function ukDayStart(dateStr) {
     if (ukDateInput(t) === dateStr && ukDateInput(t - HOUR) !== dateStr) return t;
   }
   return guess;
+}
+
+// Mark a CSV of replayed (time-shifted) readings, so a detached file can never
+// pass for current data: a source column and each reading's real time. Returns
+// null for exports that are not time-shifted (e.g. the dated daily archive).
+export function markDemoCSV(text, shiftMs) {
+  const lines = text.split('\n');
+  if (!/_utc$/.test(lines[0].split(',')[0])) return null;
+  return lines.map((l, i) => {
+    if (!l) return l;
+    if (i === 0) return `${l},data_source,original_timestamp_utc`;
+    const t = Date.parse(l.split(',')[0]);
+    return `${l},DEMO replay - not current,${Number.isFinite(t) ? new Date(t - shiftMs).toISOString() : ''}`;
+  }).join('\n');
 }
 
 export function toCSV(header, rows) {

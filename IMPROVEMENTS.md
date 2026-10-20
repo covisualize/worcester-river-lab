@@ -48,6 +48,14 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-10-20 — second external review — `?demo=feb2020` replay (real EA 15-min archive
+  readings, 6–16 Feb 2020, shifted to now; illustrative warnings; banner, status pill and
+  hero title say DEMO on every view; built by research/build_demo.py); typical-range pill in
+  words ("Near typical low") with the % in its tooltip; reference-line labels get a backing
+  box and the History "Latest" label sits below its line; archive lag counted in whole
+  calendar days (was 8, now 7); "Loading readings…" inside empty charts; 18 px Explore
+  checkboxes and 44 px rows on touch. Kept: `?compare` on Analysis, because its
+  multi-station chart uses that selection.
 - 2026-10-20 — external review — Actioned a usability review: Overview now answer-first
   (verdict, official-warning line, then the number with % of typical range); "Unofficial
   site, use GOV.UK" line at the warnings card; "intelligence" wording removed; staggered

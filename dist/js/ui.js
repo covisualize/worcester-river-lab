@@ -1,6 +1,7 @@
 // Shared DOM helpers: theme tokens, chart mounting, counters, toasts, downloads.
 /* global echarts */
 import { esc } from './charts.js';
+import { markDemoCSV } from './data.js';
 
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -44,13 +45,14 @@ export function mountChart(el, { onReady } = {}) {
     return { set() {}, chart: null, dispose() {} };
   }
   const chart = echarts.init(el, null, { renderer: 'canvas' });
+  el.classList.add('is-empty');
   charts.add(chart);
   resizeObserver ??= new ResizeObserver(entries => entries.forEach(e => echarts.getInstanceByDom(e.target)?.resize()));
   resizeObserver.observe(el);
   onReady?.(chart);
   return {
     chart,
-    set(option, opts = { notMerge: true }) { chart.setOption(option, opts); },
+    set(option, opts = { notMerge: true }) { el.classList.remove('is-empty'); chart.setOption(option, opts); },
     dispose() { resizeObserver.unobserve(el); charts.delete(chart); chart.dispose(); },
   };
 }
@@ -88,7 +90,12 @@ export function toast(message, kind = 'info') {
   setTimeout(() => el.remove(), 3700);
 }
 
+let demoExport = null; // { id, shift } while a demo replay is showing
+export const setDemoExport = d => (demoExport = d);
+
 export function download(name, text, type = 'text/csv') {
+  const marked = demoExport && type === 'text/csv' ? markDemoCSV(text, demoExport.shift) : null;
+  if (marked) { name = `DEMO-${demoExport.id}-${name}`; text = marked; }
   const url = URL.createObjectURL(new Blob([text], { type }));
   const a = Object.assign(document.createElement('a'), { href: url, download: name });
   document.body.append(a);

@@ -109,7 +109,7 @@ try {
     assert.match(summary, /1 flood alert/);
     assert.match(await page.textContent('#ov-verdict'), /^(Normal|Low|High) and (steady|rising|falling)$|^(Normal|Low|High)$/);
     assert.match(await page.textContent('#ov-warnline'), /Flood alert in force nearby/);
-    assert.match(await page.textContent('#ov-band'), /% of typical range/);
+    assert.match(await page.textContent('#ov-band'), /^(Near typical (low|high)|Middle of typical range|(Below|Above) typical range)$/);
     assert.match(await page.textContent('#ov-warn .unofficial'), /Unofficial site/);
     assert.equal(await page.locator('.kpi').count(), 6);
     assert.equal(await page.locator('#st-grid .station').count(), 7);
@@ -212,7 +212,7 @@ try {
     assert.match(await hi.page.textContent('#ov-summary'), /above.*typical range/);
     assert.match(await hi.page.textContent('#ov-summary'), /1 flood warning and 1 flood alert/);
     assert.match(await hi.page.textContent('#ov-warn-title'), /2 warnings\/alerts in force/);
-    assert.match(await hi.page.textContent('#ov-band'), /% of typical range \(above\)/);
+    assert.equal(await hi.page.textContent('#ov-band'), 'Above typical range');
     assert.match(await hi.page.textContent('.kpi[data-id="room"]'), /Above typical high\s*2\.47/);
     await hi.page.waitForFunction(() => !document.querySelector('.toast'), null, { timeout: 6000 }).catch(() => {});
     assert.deepEqual(await axeViolations(hi.page), []);
@@ -232,6 +232,37 @@ try {
     assert.match(await off.page.textContent('#ov-verdict'), /^Not current · last reading was /);
   });
   await off.context.close();
+
+  /* ---------- Demo replay: real Feb 2020 readings, labelled everywhere ---------- */
+  const demo = await open(browser, { path: '/?demo=feb2020' });
+  await step('demo replay shows a flood state and is labelled as a demo', async () => {
+    await demo.page.waitForFunction(() => window.__wr?.live.status.mode === 'demo', null, { timeout: 30000 });
+    await demo.page.waitForFunction(() => /^High and rising$/.test(document.querySelector('#ov-verdict').textContent), null, { timeout: 8000 });
+    assert.equal(await demo.page.textContent('#ov-level'), '4.98');
+    assert.match(await demo.page.textContent('#ov-warnline'), /Flood warning in force nearby/);
+    assert.match(await demo.page.textContent('#demo-banner'), /DEMO REPLAY · NOT CURRENT CONDITIONS/);
+    assert.match(await demo.page.textContent('#demo-banner'), /illustrative, not real/);
+    assert.match(await demo.page.textContent('#live-status'), /Demo replay/);
+    assert.ok(await demo.page.isHidden('#ov-demo-link'));
+    await demo.page.click('.primary-nav [data-nav="analysis"]');
+    assert.match(demo.page.url(), /demo=feb2020/, 'demo survives navigation');
+    assert.ok(await demo.page.isVisible('#demo-banner'));
+    await demo.page.click('.primary-nav [data-nav="overview"]');
+    await demo.page.waitForTimeout(1200);
+    await demo.page.waitForFunction(() => !document.querySelector('.toast'), null, { timeout: 6000 }).catch(() => {});
+    if (process.env.E2E_SHOTS) await demo.page.screenshot({ path: `${process.env.E2E_SHOTS}/demo.png`, fullPage: false });
+    assert.deepEqual(await axeViolations(demo.page), []);
+  });
+  await demo.context.close();
+  const demoOff = await open(browser, { path: '/?demo=feb2020', offline: true });
+  await step('demo replay still classifies the flood with the EA service down', async () => {
+    await demoOff.page.waitForFunction(() => window.__wr?.live.status.mode === 'demo', null, { timeout: 30000 });
+    await demoOff.page.waitForFunction(() => /^High and rising$/.test(document.querySelector('#ov-verdict').textContent), null, { timeout: 8000 });
+    assert.equal(await demoOff.page.textContent('#ov-band'), 'Above typical range');
+    const [dl] = await Promise.all([demoOff.page.waitForEvent('download'), demoOff.page.click('#tl-csv')]);
+    assert.match(dl.suggestedFilename(), /^DEMO-feb2020-diglis-/);
+  });
+  await demoOff.context.close();
 
   /* ---------- Mobile: no horizontal scrolling on any view ---------- */
   const mob = await open(browser, { device: 'iPhone 13' });

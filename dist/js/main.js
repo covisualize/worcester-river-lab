@@ -1,5 +1,5 @@
 // Application bootstrap: state, routing, shared helpers and status UI.
-import { $, $$, tokens, reducedMotion, toggleFullscreen, toast, resizeAll } from './ui.js';
+import { $, $$, esc, setDemoExport, tokens, reducedMotion, toggleFullscreen, toast, resizeAll } from './ui.js';
 import { createStore, decode, VIEWS } from './store.js';
 import { createLive } from './live.js';
 import { STATIONS, RANGES } from './config.js';
@@ -12,7 +12,7 @@ import { createHistory } from './views/history.js';
 import { createIntel } from './views/intel.js';
 
 const store = createStore(decode(location.search));
-const live = createLive();
+const live = createLive({ demo: store.get().demo });
 const rangeGroups = [];
 const COLOR_ORDER = ['2085', ...STATIONS.map(s => s.id).filter(id => id !== '2085')];
 
@@ -138,6 +138,7 @@ function drawStatus(st) {
   else if (st.mode === 'live') { text = `Live · ${fmt.time(st.updatedAt)}`; if (fr.key === 'stale') { mode = 'stale'; text = `Live · reading ${fmt.age(fr.ageMin)}`; } }
   else if (st.mode === 'stale') text = 'Update failed · cached';
   else if (st.mode === 'snapshot') text = 'Offline snapshot';
+  else if (st.mode === 'demo') text = 'Demo replay · not live';
   else if (st.mode === 'error') text = 'Data unavailable';
   else text = 'Connecting…';
   pill.dataset.mode = mode;
@@ -146,10 +147,23 @@ function drawStatus(st) {
   $('#refresh').classList.toggle('spinning', !!st.refreshing);
 }
 
+/* ---------- Demo replay banner ---------- */
+
+function drawDemo(st) {
+  const el = $('#demo-banner');
+  const d = st.mode === 'demo' && st.demo;
+  el.hidden = !d;
+  $('#ov-demo-link').hidden = !!store.get().demo;
+  if (!d) return;
+  setDemoExport({ id: d.id, shift: d.shift });
+  $('#ov-title').textContent = 'River Severn at Worcester · Diglis gauge · Demo replay';
+  el.innerHTML = `<b>DEMO REPLAY · NOT CURRENT CONDITIONS</b><span>Real EA readings from ${esc(d.label)}, with times shifted so ${esc(fmt.dateYear(d.now))} ${esc(fmt.time(d.now))} shows as now. Flood warnings in this demo are illustrative, not real.</span><a href="${esc(location.pathname)}">Exit demo for live data</a>`;
+}
+
 /* ---------- Wiring ---------- */
 
 $$('[data-nav]').forEach(b => (b.onclick = () => ctx.go(b.dataset.nav)));
-$('#refresh').onclick = async () => { await live.refresh({ manual: true }); toast(live.status.mode === 'live' ? 'Data refreshed from the Environment Agency' : 'Refresh failed — showing the last available data', live.status.mode === 'live' ? 'ok' : 'error'); };
+$('#refresh').onclick = async () => { await live.refresh({ manual: true }); if (live.status.mode === 'demo') return toast('Demo replay: the data is fixed. Exit the demo for live readings.'); toast(live.status.mode === 'live' ? 'Data refreshed from the Environment Agency' : 'Refresh failed — showing the last available data', live.status.mode === 'live' ? 'ok' : 'error'); };
 $('#live-status').onclick = () => ctx.openIntel('confidence');
 $('#theme').onclick = () => {
   const next = ctx.theme() === 'light' ? 'dark' : 'light';
@@ -177,7 +191,7 @@ document.addEventListener('keydown', e => {
 matchMedia('(prefers-reduced-motion: reduce)').addEventListener?.('change', e => { ctx.animate = !e.matches; });
 
 intel.mount();
-live.on('status', st => { drawStatus(st); });
+live.on('status', st => { drawStatus(st); drawDemo(st); });
 live.on('update', () => {
   dataReady = true;
   refreshView(store.get().view);

@@ -72,7 +72,7 @@ export function createIntel(ctx) {
     const okStations = STATIONS.filter(c => live.series[c.id]?.length).length;
     const row = (k, label, detail) => `<i data-k="${k}"></i><span>${label}</span><span>${detail}</span>`;
     return `<div class="conf">
-      ${row(s.mode === 'live' ? 'good' : s.mode === 'stale' ? 'fair' : 'poor', 'Connection', esc(s.mode === 'live' ? `Live · updated ${fmt.time(s.updatedAt)}` : s.mode === 'stale' ? 'Refresh failed — showing last good data' : s.mode === 'snapshot' ? 'Offline snapshot' : s.mode))}
+      ${row(s.mode === 'live' ? 'good' : s.mode === 'stale' ? 'fair' : 'poor', 'Connection', esc(s.mode === 'live' ? `Live · updated ${fmt.time(s.updatedAt)}` : s.mode === 'stale' ? 'Refresh failed — showing last good data' : s.mode === 'snapshot' ? 'Offline snapshot' : s.mode === 'demo' ? 'Demo replay (Feb 2020), not live' : s.mode))}
       ${row(fr.key, 'Diglis reading', esc(last ? `${fmt.dateTime(last[0])} · ${fmt.age(fr.ageMin)}` : 'none'))}
       ${row(okStations === STATIONS.length ? 'good' : okStations ? 'fair' : 'poor', 'Gauges reporting', `${okStations} of ${STATIONS.length}`)}
       ${row(live.floods ? 'good' : 'poor', 'Flood warnings', esc(live.floods ? `Checked ${fmt.time(live.floods.fetchedAt)}` : live.floodsError || 'pending'))}

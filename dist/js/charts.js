@@ -83,7 +83,8 @@ export function refLines(lines, T, values = [], { fmtValue = v => `${v.toFixed(2
     return {
       yAxis: l.value, name: l.label,
       lineStyle: { color: l.color, type: l.dashed === false || !dashed ? 'solid' : 'dashed', width: 1.2 },
-      label: { formatter: l.text ?? `${l.label} ${fmtValue(l.value)}`, position: positions[slot], color: l.color, fontSize: 11 },
+      // A backing box keeps the label legible where it crosses the plotted lines.
+      label: { formatter: l.text ?? `${l.label} ${fmtValue(l.value)}`, position: l.position ?? positions[slot], color: l.color, fontSize: 11, backgroundColor: T.surface, padding: [2, 5], borderRadius: 4 },
     };
   });
 }
