@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Worcester River · Live River Severn Intelligence</title>
+<title>Worcester River · Unofficial River Severn tracker</title>
 <meta name="description" content="Live River Severn levels at Worcester from the Environment Agency: nearby gauges, official flood warnings, interactive maps, history since 2000 and explainable charts.">
 <meta name="theme-color" content="#0b1517" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f4f5ed" media="(prefers-color-scheme: light)">
@@ -18,7 +18,7 @@
 <header class="topbar">
   <a class="brand" href="./" aria-label="Worcester River home">
     <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9"/><path d="M5 13c4-4 7 4 11 0s7 4 11 0M5 20c4-4 7 4 11 0s7 4 11 0"/></svg>
-    <span><b>Worcester River</b><small>Severn intelligence</small></span>
+    <span><b>Worcester River</b><small>Unofficial Severn tracker</small></span>
   </a>
   <nav class="primary-nav" aria-label="Main views">
     <button type="button" data-nav="overview">Overview</button>
@@ -32,7 +32,7 @@
     <button type="button" id="live-status" class="status-pill" data-mode="loading" aria-live="polite" title="Data status — click for details"><i></i><span>Connecting…</span></button>
     <button type="button" id="refresh" class="icon-btn" aria-label="Refresh data now" title="Refresh data now"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></svg></button>
     <button type="button" id="theme" class="icon-btn" aria-label="Switch colour theme" title="Switch light/dark theme"><svg viewBox="0 0 24 24"><path d="M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10z"/></svg></button>
-    <button type="button" id="intel-open" class="intel-btn" aria-controls="intel" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20L12 3zm0 6v5m0 3v.5"/></svg><span>Flood intelligence</span><b id="intel-badge" hidden>0</b></button>
+    <button type="button" id="intel-open" class="intel-btn" aria-controls="intel" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20L12 3zm0 6v5m0 3v.5"/></svg><span>Flood info</span><b id="intel-badge" hidden>0</b></button>
   </div>
 </header>
 
@@ -43,30 +43,38 @@
   <div class="hero">
     <div class="hero-main">
       <h1 class="eyebrow" id="ov-title">River Severn at Worcester · Diglis gauge</h1>
+      <p class="hero-verdict" id="ov-verdict" data-k="unknown" aria-live="polite">Checking the river…</p>
+      <p class="hero-warnline" id="ov-warnline" data-k="unknown"><i aria-hidden="true"></i><span>Checking official flood warnings…</span></p>
       <div class="hero-level">
         <span class="hero-num" id="ov-level">—</span><span class="hero-unit">m</span>
+        <span class="chip" id="ov-band" data-k="unknown" title="Position within the EA typical range for this gauge: 0% = typical low, 100% = typical high">—</span>
         <span class="chip" id="ov-trend" data-k="unknown">—</span>
-        <span class="chip" id="ov-band" data-k="unknown">—</span>
       </div>
       <p class="hero-summary" id="ov-summary">Loading the latest Environment Agency observation…</p>
       <div class="hero-meta">
         <span class="fresh" id="ov-fresh" data-k="none"><i></i><span>—</span></span>
         <details class="explain">
           <summary>What does this number mean?</summary>
-          <p><b>Stage</b> is the water surface height in metres above the gauge's own local reference point (“station datum”, mASD). It is <b>not</b> the depth of the river, and different gauges have different datums, so their numbers can’t be compared directly. The EA publishes a <b>typical range</b> for each gauge — useful context, but <b>not</b> a flood-warning threshold. Official warnings are issued separately and shown in Flood intelligence.</p>
+          <p><b>Stage</b> is the water surface height in metres above the gauge's own local reference point (“station datum”, mASD). It is <b>not</b> the depth of the river, and different gauges have different datums, so their numbers can’t be compared directly. “Normal” here means within the EA’s <b>typical range</b> for this gauge — useful context, but <b>not</b> a flood-warning threshold. Official warnings are issued separately by the Environment Agency.</p>
         </details>
       </div>
     </div>
     <div class="hero-gauge" id="ov-gauge" aria-live="polite"></div>
-    <button type="button" class="hero-warn" id="ov-warn" data-k="loading">
+    <div class="hero-warn" id="ov-warn" data-k="loading">
       <span class="eyebrow">Official flood warnings</span>
       <strong id="ov-warn-title">Checking…</strong>
       <span id="ov-warn-sub">Environment Agency · within 40 km</span>
-      <span class="hero-warn-cta">Open flood intelligence →</span>
-    </button>
+      <p class="unofficial"><b>Unofficial site.</b> For official flood warnings use <a href="https://check-for-flooding.service.gov.uk/" target="_blank" rel="noopener">GOV.UK Check for flooding ↗</a> or call Floodline 0345 988 1188.</p>
+      <button type="button" class="btn btn-ghost btn-small hero-warn-cta" id="ov-warn-open">Flood info and context →</button>
+    </div>
   </div>
 
   <div class="kpis" id="ov-kpis" aria-label="Key indicators for Diglis"></div>
+
+  <div class="more-detail">
+    <h2>More detail <span>optional</span></h2>
+    <p>The answer is above. Below: the last 24 hours and nearby gauges. For deeper analysis see <a href="?view=map" data-go="map">Map</a>, <a href="?view=analysis" data-go="analysis">Analysis</a>, <a href="?view=explore" data-go="explore">Explore</a> and <a href="?view=history" data-go="history">History</a>.</p>
+  </div>
 
   <section class="panel" id="ov-timeline" aria-labelledby="tl-title">
     <div class="panel-head">
@@ -123,7 +131,7 @@
     <div id="map" class="map" role="application" aria-label="Interactive map of Worcester river gauges. Use the station list for keyboard access."></div>
     <form class="map-search" id="map-search" role="search">
       <label class="sr-only" for="map-q">Search a place, postcode or station</label>
-      <input id="map-q" type="search" placeholder="Search place, postcode or station…" autocomplete="off" list="map-q-stations">
+      <input id="map-q" type="search" placeholder="Place, postcode or gauge" autocomplete="off" list="map-q-stations">
       <datalist id="map-q-stations"></datalist>
       <button type="submit" class="icon-btn" aria-label="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/></svg></button>
     </form>
@@ -221,10 +229,11 @@
     <div class="panel-foot"><p class="note">Rain totals use only complete hours (all four 15-minute readings present); missing hours stay blank rather than zero. A single gauge measures rain at one point and does not represent the whole Severn catchment.</p><button type="button" class="btn btn-ghost btn-small" id="an-rain-csv">Download CSV</button></div>
   </section>
 
-  <section class="panel panel-sim" id="an-sim" aria-labelledby="an-sim-title">
+  <details class="panel panel-sim" id="an-sim">
+    <summary class="sim-summary"><span class="kicker">06 · optional</span><span>Scenario simulator: a hypothetical what-if, <b>not a forecast</b></span></summary>
     <div class="sim-banner" role="note"><b>SIMULATION</b> — hypothetical what-if with your own assumptions. Not a forecast, not official, and not based on any model of the river.</div>
     <div class="panel-head">
-      <div><span class="kicker">06</span><h2 id="an-sim-title">Scenario simulator</h2><p class="sub">“If the level kept changing at a constant rate, when would it reach each reference level?” Real rivers do not behave linearly.</p></div>
+      <div><h2 id="an-sim-title">Scenario simulator</h2><p class="sub">“If the level kept changing at a constant rate, when would it reach each reference level?” Real rivers do not behave linearly.</p></div>
       <label class="select"><span class="sr-only">Station</span><select id="sim-station"></select></label>
     </div>
     <div class="sim-controls">
@@ -234,7 +243,7 @@
     </div>
     <div class="sim-out" id="sim-out"></div>
     <div class="chart chart-md" id="sim-chart"></div>
-  </section>
+  </details>
 </section>
 
 <!-- ============ EXPLORE ============ -->
@@ -328,8 +337,8 @@
 <div class="scrim" id="intel-scrim" hidden></div>
 <aside class="drawer" id="intel" aria-labelledby="intel-title" aria-hidden="true" tabindex="-1">
   <div class="drawer-head">
-    <div><p class="eyebrow">Worcester &amp; surrounding 40 km</p><h2 id="intel-title">Flood intelligence</h2></div>
-    <button type="button" class="icon-btn" id="intel-close" aria-label="Close flood intelligence"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    <div><p class="eyebrow">Worcester &amp; surrounding 40 km · unofficial summary</p><h2 id="intel-title">Flood information</h2></div>
+    <button type="button" class="icon-btn" id="intel-close" aria-label="Close flood information"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
   </div>
   <div class="drawer-body" id="intel-body"></div>
 </aside>

@@ -212,7 +212,7 @@ export function createAnalysis(ctx) {
     $('#sim-out').innerHTML = refs.map(r => {
       const hrs = hoursToReach(last[1], r.value, rate);
       const already = last[1] >= r.value;
-      return `<div class="stat"><span>${esc(r.label)} (${r.value.toFixed(2)} m)</span><strong>${already ? 'Already above' : hrs == null ? 'Not reached' : hrs <= hours ? `~${hrs < 1 ? Math.round(hrs * 60) + ' min' : hrs.toFixed(1) + ' h'}` : `> ${hours} h`}</strong><small>under this hypothetical rate</small></div>`;
+      return `<div class="stat"><span>${esc(r.label)} (${r.value.toFixed(2)} m)</span><strong>${already ? 'Already above' : hrs == null ? 'Not reached' : hrs <= hours ? `~${hrs < 1 ? Math.round(hrs * 60) + ' min' : hrs.toFixed(1) + ' h'}` : `> ${hours} h`}</strong><small>Simulation only, at a constant ${fmt.signed(rate, 1, ' cm/h')}; not a forecast</small></div>`;
     }).join('');
     charts.sim.set(simulationOption({ observed, simulated: sim, thresholds: refs, T: ctx.T, animate: ctx.animate }));
   }

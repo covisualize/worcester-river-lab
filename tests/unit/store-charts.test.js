@@ -13,7 +13,7 @@ import { STATIONS } from '../../dist/js/config.js';
 const T = {
   bg: '#000000', surface: '#111111', surface2: '#222222', line: '#333333', grid: '#444444', text: '#ffffff', muted: '#999999',
   accent: '#d8ef97', accentSoft: '#d8ef9726', water: '#4fc3c9', rise: '#f2a65a', fall: '#6aaee6', alert: '#f0b44c', severe: '#ef5f5f',
-  ok: '#7fd1a8', rain: '#6aaee6', sim: '#c792ea', palette: ['#111111', '#222222'], sequential: ['#000000', '#ffffff'], font: 'sans-serif',
+  ok: '#7fd1a8', rain: '#6aaee6', sim: '#c792ea', palette: ['#111111', '#222222'], sequential: ['#000001', '#000002', '#000003', '#000004', '#000005'], font: 'sans-serif',
 };
 const snap = JSON.parse(readFileSync(new URL('../../dist/snapshot.json', import.meta.url)));
 const series = cleanReadings(snap.readings);
@@ -118,4 +118,41 @@ test('rate summary never calls a fall a rise (single-direction windows)', () => 
   assert.ok(!/Fastest rise −/.test(df), df);
   assert.match(dr, /Fastest rise \+2\.4 cm\/h/);
   assert.match(dr, /no fall in this window/);
+});
+
+test('review fixes: verdict, axis digits, staggered labels, heatmap bands, URL hygiene', async () => {
+  const { verdict } = await import('../../dist/js/data.js');
+  const { levelDigits, refLines } = await import('../../dist/js/charts.js');
+  // Verdict: answer first, warnings override the colour key, never invented.
+  assert.equal(verdict({ key: 'normal' }, { key: 'steady' }, []).headline, 'Normal and steady');
+  assert.equal(verdict({ key: 'high' }, { key: 'rising' }, []).headline, 'High and rising');
+  assert.equal(verdict({ key: 'normal' }, { key: 'steady' }, []).warning.text, 'No flood warnings in force nearby');
+  const w = verdict({ key: 'high' }, { key: 'rising' }, [{ severityLevel: 3 }, { severityLevel: 2 }]);
+  assert.equal(w.key, 'severe');
+  assert.equal(w.warning.text, 'Flood warning in force nearby');
+  assert.equal(verdict({ key: 'normal' }, { key: 'steady' }, [{ severityLevel: 4 }]).warning.key, 'clear', 'removed warnings do not count');
+  assert.equal(verdict({ key: 'normal' }, { key: 'steady' }, null).warning.key, 'unknown');
+  // Narrow ranges get 3 dp so ticks never repeat.
+  assert.equal(levelDigits([0.55, 0.552, 0.57]), 3);
+  assert.equal(levelDigits([0.5, 1.4]), 2);
+  // Close reference lines get different label positions.
+  const lines = refLines([{ value: 5.04, label: 'Highest recent', color: '#f00' }, { value: 5.3, label: 'Record', color: '#f00' }, { value: 2.8, label: 'Typical high', color: '#0f0' }], T, [0.5, 6]);
+  assert.equal(lines.length, 3);
+  const pos = Object.fromEntries(lines.map(l => [l.name, l.label.position]));
+  assert.notEqual(pos['Highest recent'], pos.Record);
+  // Heatmap: piecewise bands from EA reference levels; blank cells for no data.
+  const cal = calendarOption({ year: 2026, rows: [['2026-01-05', 4.6, 1, 'G'], ['2026-06-01', 0.55, 0.5, 'G']], T, low: 0.548, high: 2.8, highestRecent: 5.037 });
+  assert.equal(cal.visualMap.type, 'piecewise');
+  assert.equal(cal.visualMap.pieces.length, 5);
+  assert.equal(cal.calendar.itemStyle.color, 'transparent');
+  // Shared links only carry the current view's state.
+  const st = { ...defaults(), view: 'map', compare: ['2001', '2085'], metric: 'range', notes: [1792300000000], range: '7d' };
+  assert.equal(encode(st), '?view=map');
+  assert.equal(encode({ ...st, view: 'overview' }), '?range=7d');
+  assert.match(encode({ ...st, view: 'explore' }), /compare=2001%2C2085.*range=7d.*metric=range.*notes=/);
+});
+
+test('simulation caveat is drawn inside the chart image', () => {
+  const o = simulationOption({ observed: series.slice(-10), simulated: simulateLinear(0.5, 2, 6).map(([h, v]) => [series.at(-1)[0] + h * 3600000, v]), thresholds: [], T });
+  assert.ok(o.graphic.some(g => /SIMULATION, NOT A FORECAST/.test(g.style.text)));
 });

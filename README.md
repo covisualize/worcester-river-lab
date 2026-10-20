@@ -1,6 +1,6 @@
 # Worcester River Lab
 
-**Live River Severn intelligence for Worcester** — a static, no-build web app (served from `dist/`) built on Environment Agency open data. It shows the latest verified river levels, official flood warnings, nearby gauges, an interactive map, 26 years of history and explainable charts. It does **not** forecast floods.
+**Unofficial River Severn tracker for Worcester** — a static, no-build web app (served from `dist/`) built on Environment Agency open data. It shows the latest verified river levels, official flood warnings, nearby gauges, an interactive map, 26 years of history and explainable charts. It does **not** forecast floods.
 
 ## Milestone 4: interactive intelligence dashboard
 
@@ -14,7 +14,7 @@
 | **Analysis** | (1) multi-station comparison in stage / change / % of typical range / derived mAOD; (2) level gauge with EA stageScale table; (3) typical-range comparison bars; (4) rate of change (cm/h); (5) rainfall vs river level; (6) a clearly labelled *simulation* (linear what-if, never a forecast). |
 | **Explore** | Pick stations, dates and measures; click to pin notes; automatic annotations (peak, low, fastest rise/fall); playable/scrubbable animation; linked mini-map with two-way highlighting; insight list; shareable URL; CSV. |
 | **History** | EA Hydrology daily maxima since 2000: long-term chart, largest independent events (≥14 days apart), peak-aligned event overlay, year calendar heatmap, quality flags. |
-| **Flood intelligence** (drawer) | Official warnings within 40 km with messages and GOV.UK links, observed changes at all gauges, verified reference levels, historical comparison, data confidence & freshness, official guidance and Floodline. |
+| **Flood info** (drawer) | Official warnings within 40 km with messages and GOV.UK links, observed changes at all gauges, verified reference levels, historical comparison, data confidence & freshness, official guidance and Floodline. |
 
 Every view is URL-addressable (`?view=explore&compare=2001,2085&range=7d&metric=range&notes=…`). Keyboard: `1`–`5` switch views, `R` refreshes, `F` opens flood intelligence, `Esc` closes it. Light/dark themes; `prefers-reduced-motion` disables animation.
 

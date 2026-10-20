@@ -2,7 +2,7 @@
 import { $, $$, h, esc, countTo, mountChart, download, setBusy, errorBox } from '../ui.js';
 import { timeSeriesOption, gaugeSVG, sparkline } from '../charts.js';
 import {
-  change, currentRate, trend, rangePosition, freshness, rateSeries, breakGaps, notable, fmt, toCSV, windowed, time, gaps,
+  change, currentRate, trend, rangePosition, freshness, verdict, rateSeries, breakGaps, notable, fmt, toCSV, windowed, time, gaps,
 } from '../data.js';
 import { PRIMARY, STATIONS, SEVERITY, RULES } from '../config.js';
 
@@ -24,7 +24,8 @@ export function createOverview(ctx) {
         lastWindow.flatMap(s => s.raw.map(([t, v]) => [new Date(t).toISOString(), fmt.full(t), s.name, v]))));
     };
     $('#tl-explore').onclick = () => ctx.go('explore', { compare: $('#tl-upstream').checked ? ['2001', PRIMARY] : [PRIMARY] });
-    $('#ov-warn').onclick = () => ctx.openIntel();
+    $('#ov-warn-open').onclick = () => ctx.openIntel();
+    $$('#view-overview [data-go]').forEach(a => (a.onclick = e => { e.preventDefault(); ctx.go(a.dataset.go); }));
     $$('#st-sort button').forEach(b => (b.onclick = () => {
       sortKey = b.dataset.sort;
       $$('#st-sort button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
@@ -44,9 +45,15 @@ export function createOverview(ctx) {
     const fr = freshness(last?.[0]);
     const h1 = change(series, 1);
 
+    // Answer first: verdict, then official warnings, then the number.
+    const v = verdict(last ? pos : { key: 'unknown' }, tr, live.floods ? live.floods.items : live.floodsError ? [] : null);
+    Object.assign($('#ov-verdict'), { textContent: last ? v.headline : 'No recent reading' }).dataset.k = v.key;
+    const wl = $('#ov-warnline');
+    wl.dataset.k = live.floodsError ? 'unknown' : v.warning.key;
+    wl.querySelector('span').textContent = live.floodsError ? 'Flood warning status could not be checked: use GOV.UK' : v.warning.text;
     countTo($('#ov-level'), last?.[1], { digits: 2 });
     Object.assign($('#ov-trend'), { textContent: `${tr.arrow} ${tr.label}${rate != null ? ` · ${fmt.signed(rate, 1, ' cm/h')}` : ''}` }).dataset.k = tr.key;
-    Object.assign($('#ov-band'), { textContent: pos.label }).dataset.k = pos.key;
+    Object.assign($('#ov-band'), { textContent: pos.pct == null ? pos.label : `${Math.max(0, Math.round(pos.pct))}% of typical range${pos.pct < 0 ? ' (below)' : pos.pct > 100 ? ' (above)' : ''}` }).dataset.k = pos.key;
     $('#ov-fresh').dataset.k = fr.key;
     $('#ov-fresh span').textContent = last ? `Observed ${fmt.time(last[0])} ${fmt.zone(last[0])}, ${fmt.date(last[0])} · ${fmt.age(fr.ageMin)} · ${fr.label}` : 'No reading available';
 
@@ -128,15 +135,17 @@ export function createOverview(ctx) {
         go: () => ctx.go('analysis', { station: PRIMARY }, '#an-rate'),
       },
       {
-        id: 'room', label: 'Below typical high', value: st?.scale?.high != null && last ? st.scale.high - last[1] : null, unit: 'm', digits: 2, k: pos.key,
+        // Distance to the top of the typical range, worded for which side we're on.
+        id: 'room', label: pos.key === 'high' ? 'Above typical high' : 'Below typical high',
+        value: st?.scale?.high != null && last ? Math.abs(st.scale.high - last[1]) : null, unit: 'm', digits: 2, k: pos.key,
         bar: pos.pct, foot: pos.pct != null ? `${Math.round(pos.pct)}% through typical range` : 'Typical range unavailable',
-        pop: `Distance from the latest reading to the top of the EA typical range (${st?.scale?.high?.toFixed(2) ?? '—'} m). Typical range is context, not a flood threshold.`,
+        pop: `How far the latest reading is ${pos.key === 'high' ? 'above' : 'below'} the top of the EA typical range (${st?.scale?.high?.toFixed(2) ?? '—'} m). Typical range is context, not a flood threshold.`,
         go: () => ctx.openIntel('context'),
       },
       {
         id: 'warn', label: 'Warnings & alerts', value: live.floods ? active.length : null, unit: '', digits: 0, k: active.length ? 'high' : 'normal',
         foot: live.floods ? `EA · checked ${fmt.time(live.floods.fetchedAt)}` : live.floodsError ? 'Unavailable' : 'Checking…',
-        pop: 'Official Environment Agency flood warnings and alerts in force within 40 km of Worcester. Opens Flood intelligence.',
+        pop: 'Official Environment Agency flood warnings and alerts in force within 40 km of Worcester. Opens Flood info.',
         go: () => ctx.openIntel('warnings'),
       },
     ];
@@ -149,6 +158,7 @@ export function createOverview(ctx) {
       el.dataset.k = c.k;
       el.onclick = c.go;
       countTo(el.querySelector('.v'), c.value, { digits: c.digits, signed: c.signed });
+      el.querySelector('.kpi-label').textContent = c.label;
       el.querySelector('.kpi-foot').textContent = c.foot;
       el.querySelector('.kpi-pop').innerHTML = `<b>${esc(c.label)}</b><span>${esc(c.pop)}</span>`;
       el.querySelector('.kpi-viz').innerHTML = c.bar !== undefined
@@ -217,7 +227,7 @@ export function createOverview(ctx) {
         <div class="station-val">${r.last ? r.last[1].toFixed(2) : '—'}<small> m</small> <small>${r.c24 ? fmt.signed(r.c24.delta * 100, 1, ' cm / 24 h') : ''}</small></div>
         ${sparkline(r.series, { width: 200, height: 36, color: ctx.colorOf(r.cfg.id), band: r.st?.scale })}
         <div class="range-meter" data-k="${r.pos.key}" title="${esc(r.pos.label)}${pct != null ? ` (${Math.round(r.pos.pct)}%)` : ''}"><span style="left:${pct ?? 0}%;${pct == null ? 'display:none' : ''}"></span></div>
-        <div class="station-meta"><span>${esc(r.pos.label)}</span><span>${r.last ? `${fmt.time(r.last[0])} · ${esc(r.fr.label)}` : esc(r.st?.error || 'No data')}</span></div>
+        <div class="station-meta"><span>${esc(r.pos.label)}</span><span title="${r.last ? esc(fmt.full(r.last[0])) : ''}">${r.last ? (r.fr.key === 'stale' || r.fr.key === 'recent' ? `${esc(r.fr.label)}: last reading ${fmt.time(r.last[0])} (${esc(fmt.age(r.fr.ageMin))}); the EA has not yet published a newer one` : `${fmt.time(r.last[0])} · ${esc(r.fr.label)}`) : esc(r.st?.error || 'No data')}</span></div>
         <div class="station-actions"><button type="button" class="btn btn-ghost btn-small" data-act="map">On map</button><button type="button" class="btn btn-ghost btn-small" data-act="explore">Explore</button></div>
       </article>`;
     }).join('');

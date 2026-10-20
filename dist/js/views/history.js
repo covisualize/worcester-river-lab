@@ -42,7 +42,8 @@ export function createHistory(ctx) {
     if (!archive) return;
     const rows = rowsOf(station), st = live.station(station), sc = st.scale || {};
     const retrieved = parseTime(archive.retrievedAt);
-    $('#hi-source').innerHTML = `${rows.length.toLocaleString('en-GB')} days · ${esc(rows[0][0])} to ${esc(rows.at(-1)[0])} · EA Hydrology API, retrieved ${esc(fmt.dateYear(retrieved))}. Values after the archive's last date come from the live feed (see Explore).`;
+    const lagDays = Math.round((retrieved - Date.parse(rows.at(-1)[0] + 'T00:00:00Z')) / time.DAY);
+    $('#hi-source').innerHTML = `${rows.length.toLocaleString('en-GB')} days · ${esc(fmt.dateYear(Date.parse(rows[0][0])))} to ${esc(fmt.dateYear(Date.parse(rows.at(-1)[0])))} · EA Hydrology API, retrieved ${esc(fmt.dateYear(retrieved))}. <b>The quality-checked archive runs about a week behind</b> (latest archived day was ${lagDays} days before retrieval); for the most recent days use Overview or Explore, which read the live feed.`;
     const minYear = +rows[0][0].slice(0, 4), maxYear = +rows.at(-1)[0].slice(0, 4);
     year = Math.min(Math.max(year, minYear), maxYear);
     events = topEvents(rows, { count: 12, separationDays: 14 });
@@ -102,7 +103,7 @@ export function createHistory(ctx) {
     $('#hi-year').textContent = year;
     $('#hi-prev').disabled = year <= minYear;
     $('#hi-next').disabled = year >= maxYear;
-    charts.cal.set(calendarOption({ year, rows, T: ctx.T, animate: ctx.animate, low: sc.low, high: sc.high, narrow: innerWidth < 640 }));
+    charts.cal.set(calendarOption({ year, rows, T: ctx.T, animate: ctx.animate, low: sc.low, high: sc.high, highestRecent: sc.highestRecent?.value, narrow: innerWidth < 640 }));
   }
 
   function zoomTo(t, days) {
