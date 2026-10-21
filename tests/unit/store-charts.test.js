@@ -191,6 +191,19 @@ test('CSV exports during a demo are marked and keep the real reading times', asy
   assert.equal(markDemoCSV(toCSV(['date_gmt', 'daily_max_m_asd'], [['2020-02-17', 5.27]]), shift), null, 'real dated archive is left alone');
 });
 
+test('outage messages are plain English, and the fallback snapshot covers the gauges', async () => {
+  const { describeError } = await import('../../dist/js/api.js');
+  assert.equal(describeError(new TypeError('Failed to fetch'), true), 'The Environment Agency service could not be reached');
+  assert.equal(describeError(new Error('HTTP 503 from environment.data.gov.uk'), true), 'The Environment Agency service is having problems (error 503)');
+  assert.equal(describeError(new Error('HTTP 404 from environment.data.gov.uk'), true), 'The Environment Agency service refused the request (error 404)');
+  assert.equal(describeError(new TypeError('x'), false), 'You appear to be offline');
+  const f = JSON.parse(readFileSync(new URL('../../dist/data/fallback-snapshot.json', import.meta.url)));
+  assert.ok(Number.isFinite(Date.parse(f.retrievedAt)));
+  assert.ok(Object.values(f.series).filter(s => s.length).length >= 5);
+  for (const s of Object.values(f.series)) for (const [t, v] of s) assert.ok(Number.isFinite(t) && Number.isFinite(v));
+  assert.equal(normaliseStation(f.stations['2085'], STATIONS.find(x => x.id === '2085')).scale.high, 2.8);
+});
+
 test('simulation caveat is drawn inside the chart image', () => {
   const o = simulationOption({ observed: series.slice(-10), simulated: simulateLinear(0.5, 2, 6).map(([h, v]) => [series.at(-1)[0] + h * 3600000, v]), thresholds: [], T });
   assert.ok(o.graphic.some(g => /SIMULATION, NOT A FORECAST/.test(g.style.text)));

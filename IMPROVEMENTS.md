@@ -25,8 +25,8 @@ Anything broken here takes priority over the backlog.
       5 views in both themes; chart screen-reader summaries; regression test in e2e.
 - [ ] Accessibility follow-up: manual screen-reader pass (VoiceOver/NVDA) over the map
       panel and Explore playback; a visible "skip to chart data" table option.
-- [ ] Fallback snapshot covers only 2 of 7 gauges, and outage banner shows the raw error
-      ("Failed to fetch"); seen in the 20 Oct EA outage.
+- [x] Fallback snapshot covers all 7 gauges (weekly `research/build_snapshot.py`, kept on a
+      partial response) and outage messages are plain English instead of "Failed to fetch".
 - [ ] Performance: Lighthouse on mobile; consider lazy-loading ECharts/Leaflet per view,
       and pre-compressing `dist/data/archive-daily.json`.
 - [ ] Chart time-axis ticks follow the viewer's local timezone; make tick placement
@@ -48,6 +48,13 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-10-21 — daily/2026-10-21-outage-fallback — Health: site live on desktop+mobile, no
+  console errors; all 7 gauges reporting (Bransford ~36 min, others ~21 min; one Bewdley
+  fetch failed once on desktop, then recovered); deploy and weekly refresh green; EA API
+  responding but slow (~55 s per request through this environment). Change: outage fallback
+  now uses an all-gauge snapshot (last 25 h of readings, station metadata, rain 1773),
+  refreshed weekly by the data workflow; banner says "could not be reached" / "having
+  problems (error 503)" instead of raw browser errors. Verified in a browser with EA blocked.
 - 2026-10-20 — second external review — `?demo=feb2020` replay (real EA 15-min archive
   readings, 6–16 Feb 2020, shifted to now; illustrative warnings; banner, status pill and
   hero title say DEMO on every view; built by research/build_demo.py); typical-range pill in
