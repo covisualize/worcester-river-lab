@@ -25,8 +25,8 @@ Anything broken here takes priority over the backlog.
       5 views in both themes; chart screen-reader summaries; regression test in e2e.
 - [ ] Accessibility follow-up: manual screen-reader pass (VoiceOver/NVDA) over the map
       panel and Explore playback; a visible "skip to chart data" table option.
-- [x] Fallback snapshot covers all 7 gauges (weekly `research/build_snapshot.py`, kept on a
-      partial response) and outage messages are plain English instead of "Failed to fetch".
+- [x] Fallback snapshot covers all 7 gauges (weekly `research/build_snapshot.py`, kept unless
+      all 7 gauges respond) and outage messages are plain English instead of "Failed to fetch".
 - [ ] Performance: Lighthouse on mobile; consider lazy-loading ECharts/Leaflet per view,
       and pre-compressing `dist/data/archive-daily.json`.
 - [ ] Chart time-axis ticks follow the viewer's local timezone; make tick placement

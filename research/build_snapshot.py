@@ -3,8 +3,8 @@
 The last 25 hours of real EA readings for every curated gauge (plus rain gauge
 1773) and the EA station metadata, saved at build time. The dashboard shows it
 only when the live EA service cannot be reached, always labelled "saved
-snapshot" with its capture time. A partial response (fewer than 5 gauges with
-readings) leaves the previous file untouched. Run: python research/build_snapshot.py
+snapshot" with its capture time. Unless every gauge returns metadata and
+readings, the previous file is kept: one capture time must describe the whole file. Run: python research/build_snapshot.py
 """
 import json, pathlib, datetime, urllib.request
 
@@ -13,7 +13,6 @@ OUT = ROOT / 'dist/data/fallback-snapshot.json'
 EA = 'https://environment.data.gov.uk/flood-monitoring'
 STATION_IDS = ['2001', '2642', '2085', '2616', '2032', '2029', '2086']
 RAIN = '1773-rainfall-tipping_bucket_raingauge-t-15_min-mm'
-MIN_GAUGES = 5
 
 
 def get(url):
@@ -56,9 +55,9 @@ except Exception as e:
     print(f'rain: {e}')
     rain = []
 
-ok = sum(1 for v in series.values() if v)
-if ok < MIN_GAUGES:
-    print(f'Only {ok} gauges returned readings; keeping the previous snapshot.')
+missing = [sid for sid in STATION_IDS if sid not in stations or not series.get(sid)]
+if missing:
+    print(f'No metadata or readings for {", ".join(missing)}; keeping the previous snapshot.')
 else:
     OUT.write_text(json.dumps({'retrievedAt': now.isoformat(timespec='seconds'), 'stations': stations, 'series': series, 'rain1773': rain}, separators=(',', ':')))
     print(OUT.name, {k: len(v) for k, v in series.items()}, 'rain', len(rain), OUT.stat().st_size, 'bytes')

@@ -27,7 +27,7 @@ jobs:
           python-version: '3.12'
       - name: Rebuild reference data from the Environment Agency
         run: python research/build_reference.py
-      - name: Refresh the all-gauge outage snapshot (keeps the old one on a partial response)
+      - name: Refresh the all-gauge outage snapshot (keeps the old one unless all 7 gauges respond)
         run: python research/build_snapshot.py
       - name: Sanity-check the new files before committing
         run: python research/check_reference.py
