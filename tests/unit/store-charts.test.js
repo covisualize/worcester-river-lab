@@ -208,3 +208,20 @@ test('simulation caveat is drawn inside the chart image', () => {
   const o = simulationOption({ observed: series.slice(-10), simulated: simulateLinear(0.5, 2, 6).map(([h, v]) => [series.at(-1)[0] + h * 3600000, v]), thresholds: [], T });
   assert.ok(o.graphic.some(g => /SIMULATION, NOT A FORECAST/.test(g.style.text)));
 });
+
+test('slim ECharts bundle includes every feature the charts use', () => {
+  const src = readFileSync(new URL('../../dist/js/charts.js', import.meta.url), 'utf8');
+  const entry = readFileSync(new URL('../../scripts/echarts-entry.mjs', import.meta.url), 'utf8');
+  const need = {
+    "type: 'line'": 'LineChart', "type: 'bar'": 'BarChart', "type: 'heatmap'": 'HeatmapChart', 'markLine': 'MarkLineComponent',
+    'markArea': 'MarkAreaComponent', 'markPoint': 'MarkPointComponent', 'dataZoom': 'DataZoomComponent', 'visualMap': 'VisualMapComponent',
+    'calendar': 'CalendarComponent', 'graphic': 'GraphicComponent', 'legend': 'LegendComponent', 'tooltip': 'TooltipComponent', 'aria': 'AriaComponent',
+  };
+  for (const [used, comp] of Object.entries(need)) if (src.includes(used)) assert.match(entry, new RegExp(`\\b${comp}\\b`), `${used} needs ${comp}`);
+  // Every `type:` in the chart options must be a bundled series or a built-in axis/zoom/legend type.
+  const known = new Set(['line', 'bar', 'heatmap', 'time', 'value', 'category', 'inside', 'slider', 'piecewise', 'continuous', 'scroll', 'dashed', 'dotted', 'solid', 'text', 'group', 'rect', 'cross', 'shadow', 'linear']);
+  for (const [, t] of src.matchAll(/type: '(\w+)'/g)) assert.ok(known.has(t), `type '${t}' is not bundled`);
+  const html = readFileSync(new URL('../../dist/index.html', import.meta.url), 'utf8');
+  assert.match(html, /vendor\/echarts\.slim\.min\.js/);
+  assert.ok(readFileSync(new URL('../../dist/vendor/echarts.slim.min.js', import.meta.url)).length > 100_000);
+});

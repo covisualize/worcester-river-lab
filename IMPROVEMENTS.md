@@ -27,8 +27,10 @@ Anything broken here takes priority over the backlog.
       panel and Explore playback; a visible "skip to chart data" table option.
 - [x] Fallback snapshot covers all 7 gauges (weekly `research/build_snapshot.py`, kept unless
       all 7 gauges respond) and outage messages are plain English instead of "Failed to fetch".
-- [ ] Performance: Lighthouse on mobile; consider lazy-loading ECharts/Leaflet per view,
-      and pre-compressing `dist/data/archive-daily.json`.
+- [x] Performance, step 1: slim ECharts bundle (only the charts/components used; built by
+      `npm run vendor` from scripts/echarts-entry.mjs): 339 → 218 KB gzip, 1034 → 643 KB to parse.
+- [ ] Performance, next: lazy-load Leaflet (43 KB gzip) on first Map/Explore visit; Lighthouse
+      on a real phone.
 - [ ] Chart time-axis ticks follow the viewer's local timezone; make tick placement
       follow UK midnights for non-UK viewers (labels are already UK time).
 - [ ] Flood-warning history: show warnings issued in the last 24 h with their timeline
@@ -48,6 +50,12 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-10-22 — daily/2026-10-22-slim-echarts — Health: site live on desktop+mobile, no
+  console errors; all 7 gauges reporting (Bransford ~52 min, others ~22 min); deploy green;
+  PR #8 (outage fallback) still awaiting review, so not touched. Change: ECharts slimmed to the
+  parts in use, cutting the Overview's first load from ~472 KB to ~350 KB transferred.
+  Verified by rendering all 10 charts with the full and the slim library at a fixed clock:
+  pixel-identical (a control build missing markLine differed on 6 of 10, so the check bites).
 - 2026-10-21 — daily/2026-10-21-outage-fallback — Health: site live on desktop+mobile, no
   console errors; all 7 gauges reporting (Bransford ~36 min, others ~21 min; one Bewdley
   fetch failed once on desktop, then recovered); deploy and weekly refresh green; EA API
