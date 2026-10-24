@@ -36,9 +36,14 @@ export async function getJSON(url, { ttl = 60_000, timeout = 20_000, retries = 1
   try { return await p; } finally { inflight.delete(url); }
 }
 
-function describeError(e) {
-  if (!navigator.onLine) return 'You appear to be offline';
+// Plain-English reasons; raw browser errors ("Failed to fetch") mean nothing
+// to residents. A blocked or failed network request surfaces as a TypeError.
+export function describeError(e, online = typeof navigator === 'undefined' || navigator.onLine) {
+  if (!online) return 'You appear to be offline';
   if (e?.name === 'TimeoutError' || e?.name === 'AbortError') return 'The Environment Agency service took too long to respond';
+  if (e?.name === 'TypeError') return 'The Environment Agency service could not be reached';
+  const http = /^HTTP (\d{3})/.exec(e?.message || '');
+  if (http) return http[1] >= 500 ? `The Environment Agency service is having problems (error ${http[1]})` : `The Environment Agency service refused the request (error ${http[1]})`;
   return e?.message || 'Request failed';
 }
 
@@ -208,8 +213,18 @@ export function getStatic(path) {
   return staticCache.get(path);
 }
 
-// Offline fallback: the milestone snapshots shipped in dist/.
+// Offline fallback: the weekly all-gauge snapshot (research/build_snapshot.py),
+// else the original milestone snapshots, which cover Diglis and Bewdley only.
 export async function getSnapshotFallback() {
+  try {
+    const f = await getStatic('data/fallback-snapshot.json');
+    const out = { capturedAt: parseTime(f.retrievedAt), series: {}, stations: {}, rain1773: f.rain1773 || [] };
+    for (const cfg of STATIONS) {
+      if (f.stations?.[cfg.id]) out.stations[cfg.id] = normaliseStation(f.stations[cfg.id], cfg);
+      if (f.series?.[cfg.id]?.length) out.series[cfg.id] = f.series[cfg.id];
+    }
+    if (Object.keys(out.series).length) return out;
+  } catch { /* fall through to the milestone files */ }
   const [snap, hist] = await Promise.allSettled([getStatic('snapshot.json'), getStatic('history.json')]);
   const out = { capturedAt: null, series: {}, stations: {} };
   if (snap.status === 'fulfilled') {

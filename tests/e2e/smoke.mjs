@@ -227,6 +227,10 @@ try {
     await off.page.waitForFunction(() => window.__wr?.live.status.mode === 'snapshot', null, { timeout: 30000 });
     await off.page.waitForSelector('#ov-banner');
     assert.match(await off.page.textContent('#ov-banner'), /not current readings/);
+    assert.doesNotMatch(await off.page.textContent('#ov-banner'), /Failed to fetch/);
+    assert.match(await off.page.textContent('#ov-banner'), /could not be reached/);
+    const gauges = await off.page.evaluate(() => Object.values(window.__wr.live.series).filter(s => s.length).length);
+    assert.ok(gauges >= 5, `snapshot covers ${gauges} gauges`);
     assert.match(await off.page.textContent('#live-status'), /Offline snapshot/);
     assert.notEqual(await off.page.textContent('#ov-level'), '—');
     assert.match(await off.page.textContent('#ov-verdict'), /^Not current · last reading was /);
