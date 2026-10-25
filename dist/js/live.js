@@ -23,6 +23,7 @@ export function createLive({ demo = null } = {}) {
     series: {},        // id -> last ~25 h of readings
     floods: null,      // { fetchedAt, items }
     floodsError: null,
+    localAreas: null,  // Set of EA flood-area ids near Worcester, once fetched
     status: { mode: 'loading', updatedAt: null, error: null, snapshotAt: null },
 
     on(type, fn) { target.addEventListener(type, e => fn(e.detail)); },
@@ -44,7 +45,8 @@ export function createLive({ demo = null } = {}) {
       live.emit('status', live.status);
       refreshing = (async () => {
         const since = Date.now() - 25 * time.HOUR;
-        const [stations, floods] = await Promise.allSettled([api.getStations(), api.getFloods()]);
+        const [stations, floods, areas] = await Promise.allSettled([api.getStations(), api.getFloods(), api.getFloodAreas()]);
+        if (areas.status === 'fulfilled' && areas.value.length) live.localAreas = new Set(areas.value.map(a => a.id));
         if (stations.status === 'fulfilled') {
           live.stations = stations.value;
           live.byId = Object.fromEntries(live.stations.map(s => [s.id, s]));

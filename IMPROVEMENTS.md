@@ -31,6 +31,9 @@ Anything broken here takes priority over the backlog.
       `npm run vendor` from scripts/echarts-entry.mjs): 339 → 218 KB gzip, 1034 → 643 KB to parse.
 - [ ] Performance, next: lazy-load Leaflet (43 KB gzip) on first Map/Explore visit; Lighthouse
       on a real phone.
+- [x] Warnings near Worcester (EA flood areas within 12 km) vs elsewhere in the 40 km search:
+      only local ones colour the Overview verdict.
+- [ ] Flood info drawer and map: tag each warning "near Worcester" or "elsewhere".
 - [ ] Chart time-axis ticks follow the viewer's local timezone; make tick placement
       follow UK midnights for non-UK viewers (labels are already UK time).
 - [ ] Flood-warning history: show warnings issued in the last 24 h with their timeline
@@ -50,6 +53,14 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-10-25 — daily/2026-10-25-local-warnings — Health: site live on desktop+mobile, no
+  console errors; 6 of 7 gauges current (~22 min); **Bransford ~8 h behind** (EA's own latest
+  reading 23:30 UTC, so an EA-side delay; the site labels it delayed). Rivers rising after
+  rain (Bewdley 1.07 m, Diglis 0.78 m). Clocks went back today: times show GMT correctly.
+  Found on the live site: a Flood Alert for the River Wye in Herefordshire (~40 km away) turned
+  Worcester's headline amber and read "Flood alert in force nearby". Change: only warnings for
+  EA flood areas within 12 km of Worcester colour the verdict; others are reported as
+  "elsewhere within 40 km" with their area name. Verified against today's live EA data.
 - 2026-10-22 — daily/2026-10-22-slim-echarts — Health: site live on desktop+mobile, no
   console errors; all 7 gauges reporting (Bransford ~52 min, others ~22 min); deploy green;
   PR #8 (outage fallback) still awaiting review, so not touched. Change: ECharts slimmed to the

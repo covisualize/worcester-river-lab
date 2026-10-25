@@ -2,7 +2,7 @@
 import { $, $$, h, esc, countTo, mountChart, download, setBusy, errorBox } from '../ui.js';
 import { timeSeriesOption, gaugeSVG, sparkline } from '../charts.js';
 import {
-  change, currentRate, trend, rangePosition, rangeWords, freshness, verdict, rateSeries, breakGaps, notable, fmt, toCSV, windowed, time, gaps,
+  change, currentRate, trend, rangePosition, rangeWords, freshness, verdict, splitWarnings, warningCount, rateSeries, breakGaps, notable, fmt, toCSV, windowed, time, gaps,
 } from '../data.js';
 import { PRIMARY, STATIONS, SEVERITY, RULES } from '../config.js';
 
@@ -46,7 +46,7 @@ export function createOverview(ctx) {
     const h1 = change(series, 1);
 
     // Answer first: verdict, then official warnings, then the number.
-    const v = verdict(last ? pos : { key: 'unknown' }, tr, live.floods ? live.floods.items : live.floodsError ? [] : null);
+    const v = verdict(last ? pos : { key: 'unknown' }, tr, live.floods ? live.floods.items : live.floodsError ? [] : null, live.localAreas);
     // Never present a snapshot or delayed reading as the river's current state.
     const old = live.status.mode === 'snapshot' || fr.key === 'stale';
     const head = !last ? 'No recent reading' : old ? `Not current · last reading was ${v.headline.toLowerCase()}` : v.headline;
@@ -81,10 +81,11 @@ export function createOverview(ctx) {
 
   function warningSentence() {
     if (!live.floods) return live.floodsError ? 'Flood warning status could not be checked — see official sources.' : '';
-    const active = live.floods.items.filter(f => f.severityLevel <= 3);
-    if (!active.length) return 'No flood warnings or alerts are in force within 40 km.';
-    const w = active.filter(f => f.severityLevel <= 2).length, a = active.length - w;
-    return `<b>${[w && `${w} flood warning${w > 1 ? 's' : ''}`, a && `${a} flood alert${a > 1 ? 's' : ''}`].filter(Boolean).join(' and ')}</b> in force within 40 km.`;
+    const { local, remote } = splitWarnings(live.floods.items, live.localAreas);
+    if (!local.length && !remote.length) return 'No flood warnings or alerts are in force within 40 km.';
+    const near = local.length ? `<b>${warningCount(local)}</b> in force near Worcester.` : 'No flood warnings or alerts near Worcester.';
+    const far = remote.length ? ` ${warningCount(remote)} elsewhere within 40 km (${esc(remote.map(w => w.area).slice(0, 2).join('; '))}).` : '';
+    return near + far;
   }
 
   function drawWarnCard() {
@@ -95,11 +96,13 @@ export function createOverview(ctx) {
       $('#ov-warn-sub').textContent = live.floodsError ? 'Use Check for flooding (GOV.UK) for official status.' : 'Environment Agency · within 40 km';
       return;
     }
-    const active = live.floods.items.filter(f => f.severityLevel <= 3);
-    const top = active[0];
+    const { local, remote } = splitWarnings(live.floods.items, live.localAreas);
+    const top = local[0];
     el.dataset.k = top ? SEVERITY[top.severityLevel].key : 'clear';
-    $('#ov-warn-title').textContent = top ? `${active.length} ${active.length > 1 ? 'warnings/alerts' : SEVERITY[top.severityLevel].label.toLowerCase()} in force` : 'No warnings in force';
-    $('#ov-warn-sub').textContent = top ? `Most severe: ${SEVERITY[top.severityLevel].label} — ${top.area}` : `Checked ${fmt.time(live.floods.fetchedAt)} · EA flood warnings within 40 km of Worcester`;
+    $('#ov-warn-title').textContent = top ? `${local.length} ${local.length > 1 ? 'warnings/alerts' : SEVERITY[top.severityLevel].label.toLowerCase()} near Worcester` : 'No warnings near Worcester';
+    $('#ov-warn-sub').textContent = top ? `Most severe: ${SEVERITY[top.severityLevel].label} — ${top.area}${remote.length ? ` · ${remote.length} more elsewhere within 40 km` : ''}`
+      : remote.length ? `${warningCount(remote)} elsewhere within 40 km: ${remote.map(w => w.area).join('; ')}`
+      : `Checked ${fmt.time(live.floods.fetchedAt)} · EA flood warnings within 40 km of Worcester`;
   }
 
   function drawBanner() {
