@@ -208,6 +208,7 @@ main { max-width: 1320px; margin: 0 auto; padding: 22px 20px 40px; outline: none
 .hero-warnline i { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); flex: none; }
 .hero-warnline[data-k="clear"] i { background: var(--ok); }
 .hero-warnline[data-k="alert"] i { background: var(--alert); }
+.hero-warnline[data-k="remote"] i { background: transparent; box-shadow: inset 0 0 0 2px var(--alert); }
 .hero-warnline[data-k="warning"] i, .hero-warnline[data-k="severe"] i { background: var(--severe); }
 .hero-warnline[data-k="warning"], .hero-warnline[data-k="severe"] { color: var(--severe); }
 .unofficial { font-size: 12.5px; color: var(--muted); margin-top: 8px; line-height: 1.45; }

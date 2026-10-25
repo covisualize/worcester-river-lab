@@ -119,21 +119,39 @@ export function rangeWords(pos) {
   return pos.pct < 20 ? 'Near typical low' : pos.pct > 80 ? 'Near typical high' : 'Middle of typical range';
 }
 
+// Split active warnings into those for flood areas near Worcester (EA flood
+// areas within RULES.floodAreaRadiusKm) and the rest of the 40 km search.
+// Without the local list every warning counts as local: never under-warn.
+export function splitWarnings(warnings, localIds = null) {
+  const active = (warnings || []).filter(w => w.severityLevel <= 3);
+  if (!localIds) return { local: active, remote: [] };
+  return { local: active.filter(w => localIds.has(w.id)), remote: active.filter(w => !localIds.has(w.id)) };
+}
+
+const countOf = ws => {
+  const w = ws.filter(f => f.severityLevel <= 2).length, a = ws.length - w;
+  return [w && `${w} flood warning${w > 1 ? 's' : ''}`, a && `${a} flood alert${a > 1 ? 's' : ''}`].filter(Boolean).join(' and ');
+};
+export { countOf as warningCount };
+
 // Plain-English headline for the Overview, built only from the observed
 // position in the EA typical range, the observed trend and official warnings.
-export function verdict(pos, tr, warnings = null) {
+// Only warnings near Worcester colour the headline; an alert on another river
+// 40 km away is reported, but not as if it were here.
+export function verdict(pos, tr, warnings = null, localIds = null) {
   const level = { normal: 'Normal', low: 'Low', high: 'High', unknown: 'Level unknown' }[pos?.key] || 'Level unknown';
   const motion = { steady: 'steady', rising: 'rising', falling: 'falling' }[tr?.key];
   const headline = pos?.key === 'unknown' || !pos ? level : motion ? `${level} and ${motion}` : level;
-  const active = (warnings || []).filter(w => w.severityLevel <= 3);
-  const worst = active.length ? Math.min(...active.map(w => w.severityLevel)) : null;
+  const { local, remote } = splitWarnings(warnings, localIds);
+  const worst = local.length ? Math.min(...local.map(w => w.severityLevel)) : null;
   let warning;
   if (warnings == null) warning = { key: 'unknown', text: 'Flood warning status not yet checked' };
-  else if (worst === 1) warning = { key: 'severe', text: `Severe flood warning in force nearby` };
-  else if (worst === 2) warning = { key: 'warning', text: `Flood warning in force nearby` };
-  else if (worst === 3) warning = { key: 'alert', text: `Flood alert in force nearby` };
-  else warning = { key: 'clear', text: 'No flood warnings in force nearby' };
-  return { headline, key: worst && worst <= 2 ? 'severe' : worst === 3 ? 'alert' : pos?.key || 'unknown', warning };
+  else if (worst === 1) warning = { key: 'severe', text: 'Severe flood warning in force near Worcester' };
+  else if (worst === 2) warning = { key: 'warning', text: 'Flood warning in force near Worcester' };
+  else if (worst === 3) warning = { key: 'alert', text: 'Flood alert in force near Worcester' };
+  else if (remote.length) warning = { key: 'remote', text: `No flood warnings near Worcester · ${countOf(remote)} elsewhere within 40 km` };
+  else warning = { key: 'clear', text: 'No flood warnings in force near Worcester' };
+  return { headline, key: worst && worst <= 2 ? 'severe' : worst === 3 ? 'alert' : pos?.key || 'unknown', warning, local, remote };
 }
 
 // Derived height above Ordnance Datum: stage + EA stage-scale datum (which the

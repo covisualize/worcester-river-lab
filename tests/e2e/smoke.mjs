@@ -44,6 +44,9 @@ const POLY = { type: 'FeatureCollection', features: [{ type: 'Feature', properti
 // 5.27 m, EA archive) replayed by shifting the captured Diglis readings up so
 // the latest equals that peak, with a TEST Flood Warning. Never shipped.
 const FEB_2020_PEAK = 5.27;
+// TEST-ONLY: an alert for a flood area outside the 12 km "near Worcester" set
+// (the real case on 25 Oct 2026: River Wye in Herefordshire, ~40 km away).
+const TEST_REMOTE = { ...TEST_ALERT, floodAreaID: '031WAF119', description: 'River Wye in Herefordshire (TEST FIXTURE)', floodArea: { county: 'Herefordshire', riverOrSea: 'River Wye' } };
 const TEST_WARNING = { ...TEST_ALERT, floodAreaID: '031FWFSE440', description: 'River Severn at Hylton Road, Worcester (TEST FIXTURE)', severity: 'Flood warning', severityLevel: 2 };
 
 function eaResponse(url, { withAlert, scenario }) {
@@ -60,8 +63,11 @@ function eaResponse(url, { withAlert, scenario }) {
     }
     return { items: rows.map(r => ({ ...r, measure: `http://environment.data.gov.uk/flood-monitoring/id/measures/${m[1]}` })) };
   }
-  if (p.endsWith('/id/floods')) return { items: scenario === 'high' ? [TEST_WARNING, TEST_ALERT] : withAlert ? [TEST_ALERT] : [] };
-  if (p.endsWith('/id/floodAreas')) return { items: [{ notation: '031FWFSE440', label: 'River Severn at Hylton Road, Worcester', riverOrSea: 'River Severn', lat: 52.19, long: -2.23, polygon: 'http://environment.data.gov.uk/flood-monitoring/id/floodAreas/031FWFSE440/polygon' }] };
+  if (p.endsWith('/id/floods')) return { items: scenario === 'high' ? [TEST_WARNING, TEST_ALERT] : scenario === 'remote' ? [TEST_REMOTE] : withAlert ? [TEST_ALERT] : [] };
+  if (p.endsWith('/id/floodAreas')) return { items: [
+    { notation: '031FWFSE440', label: 'River Severn at Hylton Road, Worcester', riverOrSea: 'River Severn', lat: 52.19, long: -2.23, polygon: 'http://environment.data.gov.uk/flood-monitoring/id/floodAreas/031FWFSE440/polygon' },
+    { notation: '031WAF108', label: 'River Severn in Worcestershire', riverOrSea: 'River Severn', lat: 52.18, long: -2.22, polygon: 'http://environment.data.gov.uk/flood-monitoring/id/floodAreas/031WAF108/polygon' },
+  ] };
   if (p.endsWith('/polygon')) return POLY;
   if (u.hostname === 'environment.data.gov.uk') return { items: [] };
   return null;
@@ -82,6 +88,8 @@ async function open(browser, { path = '/', viewport, device, offline = false, wi
       try { return route.fulfill({ body: await readFile(join(root, p)), contentType: types[extname(p)] || 'application/octet-stream' }); } catch { return route.fulfill({ status: 404 }); }
     }
     if (offline) return route.abort('internetdisconnected');
+    // The remote scenario also makes the flood-area list slow, to prove it never holds up readings.
+    if (scenario === 'remote' && new URL(url).pathname.endsWith('/id/floodAreas')) await new Promise(r => setTimeout(r, 4000));
     const body = eaResponse(url, { withAlert, scenario });
     return body ? route.fulfill({ json: body }) : route.abort();
   });
@@ -108,7 +116,7 @@ try {
     assert.match(summary, /The Severn at Diglis is/);
     assert.match(summary, /1 flood alert/);
     assert.match(await page.textContent('#ov-verdict'), /^(Normal|Low|High) and (steady|rising|falling)$|^(Normal|Low|High)$/);
-    assert.match(await page.textContent('#ov-warnline'), /Flood alert in force nearby/);
+    assert.match(await page.textContent('#ov-warnline'), /Flood alert in force near Worcester/);
     assert.match(await page.textContent('#ov-band'), /^(Near typical (low|high)|Middle of typical range|(Below|Above) typical range)$/);
     assert.match(await page.textContent('#ov-warn .unofficial'), /Unofficial site/);
     assert.equal(await page.locator('.kpi').count(), 6);
@@ -208,10 +216,10 @@ try {
     await waitLive(hi.page);
     await hi.page.waitForFunction(() => /^High/.test(document.querySelector('#ov-verdict').textContent), null, { timeout: 8000 });
     assert.equal(await hi.page.getAttribute('#ov-verdict', 'data-k'), 'severe');
-    assert.match(await hi.page.textContent('#ov-warnline'), /Flood warning in force nearby/);
+    assert.match(await hi.page.textContent('#ov-warnline'), /Flood warning in force near Worcester/);
     assert.match(await hi.page.textContent('#ov-summary'), /above.*typical range/);
     assert.match(await hi.page.textContent('#ov-summary'), /1 flood warning and 1 flood alert/);
-    assert.match(await hi.page.textContent('#ov-warn-title'), /2 warnings\/alerts in force/);
+    assert.match(await hi.page.textContent('#ov-warn-title'), /2 warnings\/alerts near Worcester/);
     assert.equal(await hi.page.textContent('#ov-band'), 'Above typical range');
     assert.match(await hi.page.textContent('.kpi[data-id="room"]'), /Above typical high\s*2\.47/);
     await hi.page.waitForFunction(() => !document.querySelector('.toast'), null, { timeout: 6000 }).catch(() => {});
@@ -220,6 +228,23 @@ try {
   });
   await step('no runtime errors in the high-water replay', () => assert.deepEqual(hi.errors, []));
   await hi.context.close();
+
+  /* ---------- A warning 40 km away is reported, not shown as local ---------- */
+  const far = await open(browser, { scenario: 'remote' });
+  await step('a flood alert on another river is reported but does not colour the verdict', async () => {
+    // Readings and warnings arrive before the (slow) local area list; meanwhile the alert counts as local.
+    await far.page.waitForFunction(() => window.__wr?.live.status.mode === 'live' && window.__wr.live.floods, null, { timeout: 30000 });
+    assert.equal(await far.page.evaluate(() => window.__wr.live.localAreas), null, 'area list still loading');
+    await far.page.waitForFunction(() => window.__wr?.live.localAreas && window.__wr.live.floods && /^(Normal|Low|High)/.test(document.querySelector('#ov-verdict').textContent), null, { timeout: 30000 });
+    await far.page.waitForTimeout(500);
+    assert.notEqual(await far.page.getAttribute('#ov-verdict', 'data-k'), 'alert');
+    assert.equal(await far.page.getAttribute('#ov-warnline', 'data-k'), 'remote');
+    assert.match(await far.page.textContent('#ov-warnline'), /No flood warnings near Worcester · 1 flood alert elsewhere within 40 km/);
+    assert.match(await far.page.textContent('#ov-warn-title'), /No warnings near Worcester/);
+    assert.match(await far.page.textContent('#ov-warn-sub'), /River Wye in Herefordshire/);
+    assert.match(await far.page.textContent('#ov-summary'), /No flood warnings or alerts near Worcester\. 1 flood alert elsewhere within 40 km/);
+  });
+  await far.context.close();
 
   /* ---------- Offline: falls back to the labelled snapshot ---------- */
   const off = await open(browser, { offline: true });
@@ -243,7 +268,7 @@ try {
     await demo.page.waitForFunction(() => window.__wr?.live.status.mode === 'demo', null, { timeout: 30000 });
     await demo.page.waitForFunction(() => /^High and rising$/.test(document.querySelector('#ov-verdict').textContent), null, { timeout: 8000 });
     assert.equal(await demo.page.textContent('#ov-level'), '4.98');
-    assert.match(await demo.page.textContent('#ov-warnline'), /Flood warning in force nearby/);
+    assert.match(await demo.page.textContent('#ov-warnline'), /Flood warning in force near Worcester/);
     assert.match(await demo.page.textContent('#demo-banner'), /DEMO REPLAY · NOT CURRENT CONDITIONS/);
     assert.match(await demo.page.textContent('#demo-banner'), /illustrative, not real/);
     assert.match(await demo.page.textContent('#live-status'), /Demo replay/);

@@ -126,10 +126,19 @@ test('review fixes: verdict, axis digits, staggered labels, heatmap bands, URL h
   // Verdict: answer first, warnings override the colour key, never invented.
   assert.equal(verdict({ key: 'normal' }, { key: 'steady' }, []).headline, 'Normal and steady');
   assert.equal(verdict({ key: 'high' }, { key: 'rising' }, []).headline, 'High and rising');
-  assert.equal(verdict({ key: 'normal' }, { key: 'steady' }, []).warning.text, 'No flood warnings in force nearby');
+  assert.equal(verdict({ key: 'normal' }, { key: 'steady' }, []).warning.text, 'No flood warnings in force near Worcester');
   const w = verdict({ key: 'high' }, { key: 'rising' }, [{ severityLevel: 3 }, { severityLevel: 2 }]);
   assert.equal(w.key, 'severe');
-  assert.equal(w.warning.text, 'Flood warning in force nearby');
+  assert.equal(w.warning.text, 'Flood warning in force near Worcester');
+  // Only warnings for flood areas near Worcester colour the headline.
+  const local = new Set(['031FWFSE440']);
+  const far = verdict({ key: 'normal' }, { key: 'rising' }, [{ id: '031WAF119', severityLevel: 3 }], local);
+  assert.equal(far.key, 'normal');
+  assert.equal(far.warning.key, 'remote');
+  assert.equal(far.warning.text, 'No flood warnings near Worcester · 1 flood alert elsewhere within 40 km');
+  const both = verdict({ key: 'normal' }, { key: 'rising' }, [{ id: '031WAF119', severityLevel: 2 }, { id: '031FWFSE440', severityLevel: 3 }], local);
+  assert.equal(both.key, 'alert', 'the local alert counts; the remote warning does not');
+  assert.equal(verdict({ key: 'normal' }, { key: 'rising' }, [{ id: 'X', severityLevel: 3 }], null).key, 'alert', 'unknown area list: treat as local');
   assert.equal(verdict({ key: 'normal' }, { key: 'steady' }, [{ severityLevel: 4 }]).warning.key, 'clear', 'removed warnings do not count');
   assert.equal(verdict({ key: 'normal' }, { key: 'steady' }, null).warning.key, 'unknown');
   // Narrow ranges get 3 dp so ticks never repeat.
