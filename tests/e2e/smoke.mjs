@@ -88,6 +88,8 @@ async function open(browser, { path = '/', viewport, device, offline = false, wi
       try { return route.fulfill({ body: await readFile(join(root, p)), contentType: types[extname(p)] || 'application/octet-stream' }); } catch { return route.fulfill({ status: 404 }); }
     }
     if (offline) return route.abort('internetdisconnected');
+    // The remote scenario also makes the flood-area list slow, to prove it never holds up readings.
+    if (scenario === 'remote' && new URL(url).pathname.endsWith('/id/floodAreas')) await new Promise(r => setTimeout(r, 4000));
     const body = eaResponse(url, { withAlert, scenario });
     return body ? route.fulfill({ json: body }) : route.abort();
   });
@@ -230,6 +232,9 @@ try {
   /* ---------- A warning 40 km away is reported, not shown as local ---------- */
   const far = await open(browser, { scenario: 'remote' });
   await step('a flood alert on another river is reported but does not colour the verdict', async () => {
+    // Readings and warnings arrive before the (slow) local area list; meanwhile the alert counts as local.
+    await far.page.waitForFunction(() => window.__wr?.live.status.mode === 'live' && window.__wr.live.floods, null, { timeout: 30000 });
+    assert.equal(await far.page.evaluate(() => window.__wr.live.localAreas), null, 'area list still loading');
     await far.page.waitForFunction(() => window.__wr?.live.localAreas && window.__wr.live.floods && /^(Normal|Low|High)/.test(document.querySelector('#ov-verdict').textContent), null, { timeout: 30000 });
     await far.page.waitForTimeout(500);
     assert.notEqual(await far.page.getAttribute('#ov-verdict', 'data-k'), 'alert');
