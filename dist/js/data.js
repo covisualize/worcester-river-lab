@@ -122,10 +122,17 @@ export function rangeWords(pos) {
 // Split active warnings into those for flood areas near Worcester (EA flood
 // areas within RULES.floodAreaRadiusKm) and the rest of the 40 km search.
 // Without the local list every warning counts as local: never under-warn.
+// Warnings further away are listed with the ones on Worcester's own rivers
+// (Severn, Teme) first, then most severe first, so the most relevant is never
+// the one cut from a short summary.
+const OWN_RIVERS = /\b(Severn|Teme)\b/i;
+const ownRiver = w => OWN_RIVERS.test(w.river || w.area || '');
 export function splitWarnings(warnings, localIds = null) {
   const active = (warnings || []).filter(w => w.severityLevel <= 3);
   if (!localIds) return { local: active, remote: [] };
-  return { local: active.filter(w => localIds.has(w.id)), remote: active.filter(w => !localIds.has(w.id)) };
+  const remote = active.filter(w => !localIds.has(w.id))
+    .sort((a, b) => ownRiver(b) - ownRiver(a) || a.severityLevel - b.severityLevel);
+  return { local: active.filter(w => localIds.has(w.id)), remote };
 }
 
 const countOf = ws => {

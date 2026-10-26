@@ -84,7 +84,7 @@ export function createOverview(ctx) {
     const { local, remote } = splitWarnings(live.floods.items, live.localAreas);
     if (!local.length && !remote.length) return 'No flood warnings or alerts are in force within 40 km.';
     const near = local.length ? `<b>${warningCount(local)}</b> in force near Worcester.` : 'No flood warnings or alerts near Worcester.';
-    const far = remote.length ? ` ${warningCount(remote)} elsewhere within 40 km (${esc(remote.map(w => w.area).slice(0, 2).join('; '))}).` : '';
+    const far = remote.length ? ` ${warningCount(remote)} elsewhere within 40 km (${esc(remote.map(w => w.area).join('; '))}).` : '';
     return near + far;
   }
 

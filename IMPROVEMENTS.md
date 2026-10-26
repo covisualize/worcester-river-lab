@@ -53,6 +53,15 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-10-26 — daily/2026-10-26-warning-order — Health: site live on desktop+mobile, no
+  console errors, fully live in ~3.7 s (a first desktop probe read "loading" while the EA
+  answered at ~8 s a request; transient); all 7 gauges reporting (Bransford ~83 min, others
+  ~23 min); rivers rising (Bewdley 1.64 m, Diglis 0.90 m); deploy and the first weekly refresh
+  green (the new all-gauge snapshot refreshed itself: 7 gauges, captured 05:45 UTC). Three Flood
+  Alerts in force within 40 km, none near Worcester. Found on the live site: the Overview summary
+  said "3 flood alerts elsewhere (River Wye in Gloucestershire; River Wye in Herefordshire)",
+  cutting the third, River Severn in Shropshire, Worcester's own river. Change: the "elsewhere"
+  list now puts warnings on the Severn/Teme first, then most severe, and names every one.
 - 2026-10-25 — daily/2026-10-25-local-warnings — Health: site live on desktop+mobile, no
   console errors; 6 of 7 gauges current (~22 min); **Bransford ~8 h behind** (EA's own latest
   reading 23:30 UTC, so an EA-side delay; the site labels it delayed). Rivers rising after

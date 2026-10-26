@@ -47,6 +47,7 @@ const FEB_2020_PEAK = 5.27;
 // TEST-ONLY: an alert for a flood area outside the 12 km "near Worcester" set
 // (the real case on 25 Oct 2026: River Wye in Herefordshire, ~40 km away).
 const TEST_REMOTE = { ...TEST_ALERT, floodAreaID: '031WAF119', description: 'River Wye in Herefordshire (TEST FIXTURE)', floodArea: { county: 'Herefordshire', riverOrSea: 'River Wye' } };
+const TEST_REMOTE_SEVERN = { ...TEST_ALERT, floodAreaID: '031WAF103', description: 'River Severn in Shropshire (TEST FIXTURE)', floodArea: { county: 'Shropshire', riverOrSea: 'River Severn' } };
 const TEST_WARNING = { ...TEST_ALERT, floodAreaID: '031FWFSE440', description: 'River Severn at Hylton Road, Worcester (TEST FIXTURE)', severity: 'Flood warning', severityLevel: 2 };
 
 function eaResponse(url, { withAlert, scenario }) {
@@ -63,7 +64,7 @@ function eaResponse(url, { withAlert, scenario }) {
     }
     return { items: rows.map(r => ({ ...r, measure: `http://environment.data.gov.uk/flood-monitoring/id/measures/${m[1]}` })) };
   }
-  if (p.endsWith('/id/floods')) return { items: scenario === 'high' ? [TEST_WARNING, TEST_ALERT] : scenario === 'remote' ? [TEST_REMOTE] : withAlert ? [TEST_ALERT] : [] };
+  if (p.endsWith('/id/floods')) return { items: scenario === 'high' ? [TEST_WARNING, TEST_ALERT] : scenario === 'remote' ? [TEST_REMOTE, TEST_REMOTE_SEVERN] : withAlert ? [TEST_ALERT] : [] };
   if (p.endsWith('/id/floodAreas')) return { items: [
     { notation: '031FWFSE440', label: 'River Severn at Hylton Road, Worcester', riverOrSea: 'River Severn', lat: 52.19, long: -2.23, polygon: 'http://environment.data.gov.uk/flood-monitoring/id/floodAreas/031FWFSE440/polygon' },
     { notation: '031WAF108', label: 'River Severn in Worcestershire', riverOrSea: 'River Severn', lat: 52.18, long: -2.22, polygon: 'http://environment.data.gov.uk/flood-monitoring/id/floodAreas/031WAF108/polygon' },
@@ -239,10 +240,12 @@ try {
     await far.page.waitForTimeout(500);
     assert.notEqual(await far.page.getAttribute('#ov-verdict', 'data-k'), 'alert');
     assert.equal(await far.page.getAttribute('#ov-warnline', 'data-k'), 'remote');
-    assert.match(await far.page.textContent('#ov-warnline'), /No flood warnings near Worcester · 1 flood alert elsewhere within 40 km/);
+    assert.match(await far.page.textContent('#ov-warnline'), /No flood warnings near Worcester · 2 flood alerts elsewhere within 40 km/);
     assert.match(await far.page.textContent('#ov-warn-title'), /No warnings near Worcester/);
-    assert.match(await far.page.textContent('#ov-warn-sub'), /River Wye in Herefordshire/);
-    assert.match(await far.page.textContent('#ov-summary'), /No flood warnings or alerts near Worcester\. 1 flood alert elsewhere within 40 km/);
+    assert.match(await far.page.textContent('#ov-warn-sub'), /River Severn in Shropshire.*River Wye in Herefordshire/);
+    const summary = await far.page.textContent('#ov-summary');
+    assert.match(summary, /No flood warnings or alerts near Worcester\. 2 flood alerts elsewhere within 40 km/);
+    assert.match(summary, /River Severn in Shropshire[^;]*; River Wye in Herefordshire/, 'every name is listed, own river first');
   });
   await far.context.close();
 
