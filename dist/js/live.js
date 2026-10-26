@@ -92,13 +92,15 @@ export function createLive({ demo = null } = {}) {
 
         if (ok) {
           live.status = { mode: 'live', updatedAt: Date.now(), error: ok < live.stations.length ? `${live.stations.length - ok} station(s) did not respond` : null, refreshing: false };
-        } else if (live.status.updatedAt) {
-          live.status = { ...live.status, mode: 'stale', error: api.netLog.lastError?.message || 'Update failed', refreshing: false };
-        } else if (live.stations.some(s => s.latest)) {
+        } else if (live.stations.some(s => s.latest) && (!live.status.updatedAt || (live.status.partial && stations.status === 'fulfilled'))) {
           // The history failed but the gauges' latest values are live: keep them rather than
-          // swap to an older snapshot, say so, and retry soon.
+          // swap to an older snapshot, say so, and retry soon. A retry that fails the same way
+          // stays here (only while this refresh's gauge data did arrive), so the notice and
+          // the retries continue instead of turning into "could not refresh".
           live.status = { mode: 'live', updatedAt: Date.now(), error: api.netLog.lastError?.message || 'Reading history unavailable', refreshing: false, partial: true };
           setTimeout(() => { if (live.status.partial) live.refresh(); }, 60_000);
+        } else if (live.status.updatedAt) {
+          live.status = { ...live.status, mode: 'stale', error: api.netLog.lastError?.message || 'Update failed', refreshing: false };
         } else {
           await live.useSnapshot();
         }

@@ -253,6 +253,13 @@ try {
     assert.notEqual(await nor.page.textContent('#ov-level'), '—');
     assert.match(await nor.page.textContent('#ov-banner'), /Reading history unavailable/);
     assert.match(await nor.page.textContent('#live-status'), /^Live/);
+    // A retry that fails the same way keeps the notice and stays live (it used to become "Could not refresh").
+    await nor.page.evaluate(() => window.__wr.live.refresh({ manual: true }));
+    await nor.page.waitForTimeout(500);
+    assert.equal(await nor.page.evaluate(() => window.__wr.live.status.partial), true);
+    assert.equal(await nor.page.evaluate(() => window.__wr.live.status.mode), 'live');
+    assert.match(await nor.page.textContent('#ov-banner'), /Reading history unavailable/);
+    assert.match(await nor.page.textContent('#live-status'), /^Live/);
   });
   await nor.context.close();
 
