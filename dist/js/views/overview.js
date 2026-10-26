@@ -111,6 +111,7 @@ export function createOverview(ctx) {
     let msg = null;
     if (st.mode === 'snapshot') msg = `<b>Live data unavailable</b> (${esc(st.error)}). Showing the saved snapshot captured ${st.snapshotAt ? esc(fmt.full(st.snapshotAt)) : 'earlier'} — these are not current readings.`;
     else if (st.mode === 'stale') msg = `<b>Could not refresh</b> (${esc(st.error)}). Showing data from the last successful update at ${esc(fmt.time(st.updatedAt))}.`;
+    else if (st.partial) msg = `<b>Reading history unavailable</b> (${esc(st.error)}). Showing each gauge's latest value from the Environment Agency; charts and trends will appear when the history loads. Retrying.`;
     else if (st.mode === 'error') msg = `<b>No data could be loaded.</b> ${esc(st.error)}. Please use the official links below.`;
     if (msg) $('#view-overview').prepend(h(`<div class="state-warn" id="ov-banner" role="alert">${msg}</div>`));
   }

@@ -61,6 +61,14 @@ export function createLive({ demo = null } = {}) {
         if (floods.status === 'fulfilled') { live.floods = floods.value; live.floodsError = null; }
         else live.floodsError = floods.reason?.message || 'Warnings unavailable';
 
+        // The gauges' own latest readings and the warnings are enough for an honest first
+        // picture. Draw it now instead of waiting for the (slow) reading history.
+        if (!live.status.updatedAt && live.stations.some(s => s.latest)) {
+          live.status = { ...live.status, metadata: true };
+          live.emit('status', live.status);
+          live.emit('update', { partial: true, metadata: true });
+        }
+
         const pending = live.stations.map(s => api.getReadings(s.levelMeasure, since));
         // First load: show the primary gauge as soon as it arrives rather than
         // waiting for the slowest station.
@@ -86,6 +94,11 @@ export function createLive({ demo = null } = {}) {
           live.status = { mode: 'live', updatedAt: Date.now(), error: ok < live.stations.length ? `${live.stations.length - ok} station(s) did not respond` : null, refreshing: false };
         } else if (live.status.updatedAt) {
           live.status = { ...live.status, mode: 'stale', error: api.netLog.lastError?.message || 'Update failed', refreshing: false };
+        } else if (live.stations.some(s => s.latest)) {
+          // The history failed but the gauges' latest values are live: keep them rather than
+          // swap to an older snapshot, say so, and retry soon.
+          live.status = { mode: 'live', updatedAt: Date.now(), error: api.netLog.lastError?.message || 'Reading history unavailable', refreshing: false, partial: true };
+          setTimeout(() => { if (live.status.partial) live.refresh(); }, 60_000);
         } else {
           await live.useSnapshot();
         }

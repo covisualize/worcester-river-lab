@@ -133,7 +133,7 @@ function drawStatus(st) {
   const last = live.latestOf('2085');
   const fr = freshness(last?.[0]);
   let text, mode = st.mode;
-  if (st.refreshing && !st.updatedAt) text = 'Connecting to EA…';
+  if (st.refreshing && !st.updatedAt) text = st.metadata ? 'Loading readings…' : 'Connecting to EA…';
   else if (st.offline) { text = 'Offline'; mode = 'error'; }
   else if (st.mode === 'live') { text = `Live · ${fmt.time(st.updatedAt)}`; if (fr.key === 'stale') { mode = 'stale'; text = `Live · reading ${fmt.age(fr.ageMin)}`; } }
   else if (st.mode === 'stale') text = 'Update failed · cached';

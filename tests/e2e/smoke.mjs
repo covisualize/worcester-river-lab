@@ -88,6 +88,11 @@ async function open(browser, { path = '/', viewport, device, offline = false, wi
       try { return route.fulfill({ body: await readFile(join(root, p)), contentType: types[extname(p)] || 'application/octet-stream' }); } catch { return route.fulfill({ status: 404 }); }
     }
     if (offline) return route.abort('internetdisconnected');
+    // EA reading history: 'slow' answers after 8 s, 'noreadings' fails fast. Gauge metadata and warnings are untouched.
+    if (/\/readings$/.test(new URL(url).pathname)) {
+      if (scenario === 'noreadings') return route.abort('failed');
+      if (scenario === 'slow') await new Promise(r => setTimeout(r, 8000));
+    }
     // The remote scenario also makes the flood-area list slow, to prove it never holds up readings.
     if (scenario === 'remote' && new URL(url).pathname.endsWith('/id/floodAreas')) await new Promise(r => setTimeout(r, 4000));
     const body = eaResponse(url, { withAlert, scenario });
@@ -214,13 +219,14 @@ try {
   const hi = await open(browser, { scenario: 'high' });
   await step('high-water replay: Overview leads with the verdict and the official warning', async () => {
     await waitLive(hi.page);
-    await hi.page.waitForFunction(() => /^High/.test(document.querySelector('#ov-verdict').textContent), null, { timeout: 8000 });
+    await hi.page.waitForFunction(() => window.__wr?.live.status.mode === 'live' && !window.__wr.live.status.refreshing && /^High/.test(document.querySelector('#ov-verdict').textContent), null, { timeout: 15000 });
     assert.equal(await hi.page.getAttribute('#ov-verdict', 'data-k'), 'severe');
     assert.match(await hi.page.textContent('#ov-warnline'), /Flood warning in force near Worcester/);
     assert.match(await hi.page.textContent('#ov-summary'), /above.*typical range/);
     assert.match(await hi.page.textContent('#ov-summary'), /1 flood warning and 1 flood alert/);
     assert.match(await hi.page.textContent('#ov-warn-title'), /2 warnings\/alerts near Worcester/);
     assert.equal(await hi.page.textContent('#ov-band'), 'Above typical range');
+    await hi.page.waitForTimeout(1300); // KPI numbers count up for ~0.9 s after each redraw
     assert.match(await hi.page.textContent('.kpi[data-id="room"]'), /Above typical high\s*2\.47/);
     await hi.page.waitForFunction(() => !document.querySelector('.toast'), null, { timeout: 6000 }).catch(() => {});
     assert.deepEqual(await axeViolations(hi.page), []);
@@ -228,6 +234,27 @@ try {
   });
   await step('no runtime errors in the high-water replay', () => assert.deepEqual(hi.errors, []));
   await hi.context.close();
+
+  /* ---------- Slow or failing EA reading history never blanks the page ---------- */
+  const slow = await open(browser, { scenario: 'slow' });
+  await step('slow reading history: latest values and warnings show within seconds, trends follow', async () => {
+    await slow.page.waitForFunction(() => /^(Normal|Low|High)/.test(document.querySelector('#ov-verdict').textContent), null, { timeout: 5000 });
+    assert.notEqual(await slow.page.textContent('#ov-level'), '—', 'a level is shown before any history arrives');
+    assert.match(await slow.page.textContent('#live-status'), /Loading readings/);
+    assert.ok(await slow.page.evaluate(() => window.__wr.live.floods), 'warnings are shown');
+    await slow.page.waitForFunction(() => window.__wr.live.status.mode === 'live' && Object.keys(window.__wr.live.series).length >= 5, null, { timeout: 30000 });
+    assert.match(await slow.page.textContent('#ov-trend'), /Steady|Rising|Falling/, 'the trend arrives with the history');
+  });
+  await slow.context.close();
+  const nor = await open(browser, { scenario: 'noreadings' });
+  await step('failed reading history keeps the live latest values instead of the old snapshot', async () => {
+    await nor.page.waitForFunction(() => window.__wr?.live.status.partial, null, { timeout: 30000 });
+    assert.equal(await nor.page.evaluate(() => window.__wr.live.status.mode), 'live', 'not the offline snapshot');
+    assert.notEqual(await nor.page.textContent('#ov-level'), '—');
+    assert.match(await nor.page.textContent('#ov-banner'), /Reading history unavailable/);
+    assert.match(await nor.page.textContent('#live-status'), /^Live/);
+  });
+  await nor.context.close();
 
   /* ---------- A warning 40 km away is reported, not shown as local ---------- */
   const far = await open(browser, { scenario: 'remote' });
