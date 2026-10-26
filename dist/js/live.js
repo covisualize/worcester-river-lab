@@ -51,9 +51,28 @@ export function createLive({ demo = null } = {}) {
           if (!areas.length) return;
           const had = live.localAreas;
           live.localAreas = new Set(areas.map(a => a.id));
-          if (!had && live.status.mode === 'live') live.emit('update', { areas: true });
+          // Redraw once the list lands, also during the early draw (before 'live'), so a warning
+          // that was counted as local while it was unknown is corrected straight away.
+          if (!had && (live.status.mode === 'live' || live.status.metadata)) live.emit('update', { areas: true });
         }, () => {});
-        const [stations, floods] = await Promise.allSettled([api.getStations(), api.getFloods()]);
+        // Show Diglis the moment its own data arrives, not once all seven gauges and the
+        // warnings have answered; the warnings join as soon as they arrive. Its reading
+        // history starts loading now too (the later request shares this in-flight fetch).
+        const drawEarly = () => {
+          if (live.status.updatedAt || !live.stations.some(s => s.latest)) return;
+          live.status = { ...live.status, metadata: true };
+          live.emit('status', live.status);
+          live.emit('update', { partial: true, metadata: true });
+        };
+        const onEach = s => {
+          if (s.id !== PRIMARY || live.status.updatedAt) return;
+          live.byId[s.id] = s;
+          live.stations = live.stations.map(x => (x.id === s.id ? s : x));
+          if (s.levelMeasure) api.getReadings(s.levelMeasure, since).catch(() => {});
+          drawEarly();
+        };
+        const floodsP = api.getFloods().then(f => { live.floods = f; live.floodsError = null; drawEarly(); return f; });
+        const [stations, floods] = await Promise.allSettled([api.getStations({ onEach }), floodsP]);
         if (stations.status === 'fulfilled') {
           live.stations = stations.value;
           live.byId = Object.fromEntries(live.stations.map(s => [s.id, s]));
@@ -61,13 +80,9 @@ export function createLive({ demo = null } = {}) {
         if (floods.status === 'fulfilled') { live.floods = floods.value; live.floodsError = null; }
         else live.floodsError = floods.reason?.message || 'Warnings unavailable';
 
-        // The gauges' own latest readings and the warnings are enough for an honest first
-        // picture. Draw it now instead of waiting for the (slow) reading history.
-        if (!live.status.updatedAt && live.stations.some(s => s.latest)) {
-          live.status = { ...live.status, metadata: true };
-          live.emit('status', live.status);
-          live.emit('update', { partial: true, metadata: true });
-        }
+        // The gauges' own latest readings and the warnings are enough for an honest picture;
+        // draw (again) now instead of waiting for the slow reading history.
+        drawEarly();
 
         const pending = live.stations.map(s => api.getReadings(s.levelMeasure, since));
         // First load: show the primary gauge as soon as it arrives rather than
