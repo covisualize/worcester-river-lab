@@ -53,6 +53,23 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-10-26 — owner request ("show Diglis as soon as its data arrives") — The first picture no
+  longer waits for all seven gauges: Diglis's own metadata (latest level, typical range) draws it
+  the moment it arrives, the warnings join when they arrive, and Diglis's reading history starts
+  loading at once (the later request shares that in-flight fetch). Checked against live EA data
+  with every other gauge held back 20 s and readings 30 s: first picture at 3.3 s. Found and fixed
+  on the way: if the warnings arrive before the flood-area list, the page cautiously counts them as
+  local and now corrects itself when the list lands (before, only once fully live). Tests: new
+  e2e for slow other gauges and for the late area list (fails against the old logic).
+- 2026-10-26 — hotfix (owner report: "none of the info loads") — Cause: the EA reading-history
+  endpoint was taking ~35 s (station and warning calls ~1-3 s). The page only drew after the
+  history arrived, so visitors saw "Checking the river…" and dashes for ~45 s, then an older
+  "Offline snapshot" even though the EA was reachable. Fix: draw the gauges' own latest values
+  and warnings as soon as they arrive ("Loading readings…" in the status pill); allow the history
+  45 s instead of 20 s ×2; if it still fails, keep the live latest values with a "Reading history
+  unavailable" notice (retry after 60 s) instead of swapping to the snapshot. Reproduced with a
+  30 s artificial delay on the live site, then verified with the fix against live EA data. New e2e
+  scenarios: slow history (8 s) and failed history.
 - 2026-10-26 — daily/2026-10-26-warning-order — Health: site live on desktop+mobile, no
   console errors, fully live in ~3.7 s (a first desktop probe read "loading" while the EA
   answered at ~8 s a request; transient); all 7 gauges reporting (Bransford ~83 min, others

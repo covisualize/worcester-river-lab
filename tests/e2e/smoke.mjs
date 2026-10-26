@@ -64,7 +64,7 @@ function eaResponse(url, { withAlert, scenario }) {
     }
     return { items: rows.map(r => ({ ...r, measure: `http://environment.data.gov.uk/flood-monitoring/id/measures/${m[1]}` })) };
   }
-  if (p.endsWith('/id/floods')) return { items: scenario === 'high' ? [TEST_WARNING, TEST_ALERT] : scenario === 'remote' ? [TEST_REMOTE, TEST_REMOTE_SEVERN] : withAlert ? [TEST_ALERT] : [] };
+  if (p.endsWith('/id/floods')) return { items: scenario === 'high' ? [TEST_WARNING, TEST_ALERT] : scenario === 'remote' || scenario === 'remoteslow' ? [TEST_REMOTE, TEST_REMOTE_SEVERN] : withAlert ? [TEST_ALERT] : [] };
   if (p.endsWith('/id/floodAreas')) return { items: [
     { notation: '031FWFSE440', label: 'River Severn at Hylton Road, Worcester', riverOrSea: 'River Severn', lat: 52.19, long: -2.23, polygon: 'http://environment.data.gov.uk/flood-monitoring/id/floodAreas/031FWFSE440/polygon' },
     { notation: '031WAF108', label: 'River Severn in Worcestershire', riverOrSea: 'River Severn', lat: 52.18, long: -2.22, polygon: 'http://environment.data.gov.uk/flood-monitoring/id/floodAreas/031WAF108/polygon' },
@@ -89,8 +89,15 @@ async function open(browser, { path = '/', viewport, device, offline = false, wi
       try { return route.fulfill({ body: await readFile(join(root, p)), contentType: types[extname(p)] || 'application/octet-stream' }); } catch { return route.fulfill({ status: 404 }); }
     }
     if (offline) return route.abort('internetdisconnected');
+    // EA reading history: 'slow' answers after 8 s, 'noreadings' fails fast. Gauge metadata and warnings are untouched.
+    if (/\/readings$/.test(new URL(url).pathname)) {
+      if (scenario === 'noreadings') return route.abort('failed');
+      if (scenario === 'slow' || scenario === 'slowstations' || scenario === 'remoteslow') await new Promise(r => setTimeout(r, 8000));
+    }
+    // 'slowstations': every gauge except Diglis (2085) answers its metadata 8 s late.
+    if (scenario === 'slowstations' && /\/id\/stations\/\w+\.json$/.test(new URL(url).pathname) && !url.includes('/2085.json')) await new Promise(r => setTimeout(r, 8000));
     // The remote scenario also makes the flood-area list slow, to prove it never holds up readings.
-    if (scenario === 'remote' && new URL(url).pathname.endsWith('/id/floodAreas')) await new Promise(r => setTimeout(r, 4000));
+    if ((scenario === 'remote' || scenario === 'remoteslow') && new URL(url).pathname.endsWith('/id/floodAreas')) await new Promise(r => setTimeout(r, 4000));
     const body = eaResponse(url, { withAlert, scenario });
     return body ? route.fulfill({ json: body }) : route.abort();
   });
@@ -215,13 +222,15 @@ try {
   const hi = await open(browser, { scenario: 'high' });
   await step('high-water replay: Overview leads with the verdict and the official warning', async () => {
     await waitLive(hi.page);
-    await hi.page.waitForFunction(() => /^High/.test(document.querySelector('#ov-verdict').textContent), null, { timeout: 8000 });
+    await hi.page.waitForFunction(() => window.__wr?.live.status.mode === 'live' && !window.__wr.live.status.refreshing && /^High/.test(document.querySelector('#ov-verdict').textContent), null, { timeout: 15000 });
     assert.equal(await hi.page.getAttribute('#ov-verdict', 'data-k'), 'severe');
     assert.match(await hi.page.textContent('#ov-warnline'), /Flood warning in force near Worcester/);
     assert.match(await hi.page.textContent('#ov-summary'), /above.*typical range/);
     assert.match(await hi.page.textContent('#ov-summary'), /1 flood warning and 1 flood alert/);
     assert.match(await hi.page.textContent('#ov-warn-title'), /2 warnings\/alerts near Worcester/);
     assert.equal(await hi.page.textContent('#ov-band'), 'Above typical range');
+    // KPI numbers count up for ~0.9 s after each redraw (and every update restarts it): wait for the settled value.
+    await hi.page.waitForFunction(() => /Above typical high\s*2\.47/.test(document.querySelector('.kpi[data-id="room"]').textContent), null, { timeout: 6000 });
     assert.match(await hi.page.textContent('.kpi[data-id="room"]'), /Above typical high\s*2\.47/);
     await hi.page.waitForFunction(() => !document.querySelector('.toast'), null, { timeout: 6000 }).catch(() => {});
     assert.deepEqual(await axeViolations(hi.page), []);
@@ -229,6 +238,56 @@ try {
   });
   await step('no runtime errors in the high-water replay', () => assert.deepEqual(hi.errors, []));
   await hi.context.close();
+
+  /* ---------- Slow or failing EA reading history never blanks the page ---------- */
+  const slow = await open(browser, { scenario: 'slow' });
+  await step('slow reading history: latest values and warnings show within seconds, trends follow', async () => {
+    await slow.page.waitForFunction(() => /^(Normal|Low|High)/.test(document.querySelector('#ov-verdict').textContent), null, { timeout: 5000 });
+    assert.notEqual(await slow.page.textContent('#ov-level'), '—', 'a level is shown before any history arrives');
+    assert.match(await slow.page.textContent('#live-status'), /Loading readings/);
+    assert.ok(await slow.page.evaluate(() => window.__wr.live.floods), 'warnings are shown');
+    await slow.page.waitForFunction(() => window.__wr.live.status.mode === 'live' && Object.keys(window.__wr.live.series).length >= 5, null, { timeout: 30000 });
+    assert.match(await slow.page.textContent('#ov-trend'), /Steady|Rising|Falling/, 'the trend arrives with the history');
+  });
+  await slow.context.close();
+  const rs = await open(browser, { scenario: 'remoteslow' });
+  await step('a faraway alert counted as local while the area list is unknown is corrected when it arrives, before readings', async () => {
+    await rs.page.waitForFunction(() => window.__wr?.live.status.metadata && window.__wr.live.floods && !window.__wr.live.localAreas, null, { timeout: 8000 });
+    assert.equal(await rs.page.getAttribute('#ov-warnline', 'data-k'), 'alert', 'unknown area list: cautiously counted as local');
+    await rs.page.waitForFunction(() => window.__wr.live.localAreas, null, { timeout: 10000 });
+    await rs.page.waitForTimeout(800);
+    assert.equal(await rs.page.evaluate(() => window.__wr.live.status.mode), 'loading', 'history still loading');
+    assert.equal(await rs.page.getAttribute('#ov-warnline', 'data-k'), 'remote', 'corrected without waiting for the history');
+    assert.match(await rs.page.textContent('#ov-warnline'), /No flood warnings near Worcester/);
+  });
+  await rs.context.close();
+  const early = await open(browser, { scenario: 'slowstations' });
+  await step('Diglis shows as soon as its own data arrives, while the other gauges are still loading', async () => {
+    await early.page.waitForFunction(() => /^(Normal|Low|High)/.test(document.querySelector('#ov-verdict').textContent), null, { timeout: 5000 });
+    assert.notEqual(await early.page.textContent('#ov-level'), '—');
+    assert.ok(await early.page.evaluate(() => window.__wr.live.floods), 'warnings joined as soon as they arrived');
+    const others = await early.page.evaluate(() => window.__wr.live.stations.filter(s => s.id !== '2085' && s.latest).length);
+    assert.equal(others, 0, 'the other gauges have not arrived yet');
+    await early.page.waitForFunction(() => window.__wr.live.status.mode === 'live' && Object.keys(window.__wr.live.series).length >= 5, null, { timeout: 40000 });
+    assert.ok(await early.page.evaluate(() => window.__wr.live.stations.filter(s => s.latest).length >= 5), 'the rest filled in afterwards');
+  });
+  await early.context.close();
+  const nor = await open(browser, { scenario: 'noreadings' });
+  await step('failed reading history keeps the live latest values instead of the old snapshot', async () => {
+    await nor.page.waitForFunction(() => window.__wr?.live.status.partial, null, { timeout: 30000 });
+    assert.equal(await nor.page.evaluate(() => window.__wr.live.status.mode), 'live', 'not the offline snapshot');
+    assert.notEqual(await nor.page.textContent('#ov-level'), '—');
+    assert.match(await nor.page.textContent('#ov-banner'), /Reading history unavailable/);
+    assert.match(await nor.page.textContent('#live-status'), /^Live/);
+    // A retry that fails the same way keeps the notice and stays live (it used to become "Could not refresh").
+    await nor.page.evaluate(() => window.__wr.live.refresh({ manual: true }));
+    await nor.page.waitForTimeout(500);
+    assert.equal(await nor.page.evaluate(() => window.__wr.live.status.partial), true);
+    assert.equal(await nor.page.evaluate(() => window.__wr.live.status.mode), 'live');
+    assert.match(await nor.page.textContent('#ov-banner'), /Reading history unavailable/);
+    assert.match(await nor.page.textContent('#live-status'), /^Live/);
+  });
+  await nor.context.close();
 
   /* ---------- A warning 40 km away is reported, not shown as local ---------- */
   const far = await open(browser, { scenario: 'remote' });
