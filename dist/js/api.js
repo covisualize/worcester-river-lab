@@ -91,8 +91,10 @@ export async function getStation(cfg) {
   return normaliseStation(d.items, cfg);
 }
 
-export async function getStations() {
-  const settled = await Promise.allSettled(STATIONS.map(getStation));
+// `onEach(station)` fires as each gauge's metadata arrives, so callers can show the
+// first one without waiting for the slowest.
+export async function getStations({ onEach } = {}) {
+  const settled = await Promise.allSettled(STATIONS.map(cfg => getStation(cfg).then(s => { onEach?.(s); return s; })));
   return STATIONS.map((cfg, i) => (settled[i].status === 'fulfilled' ? settled[i].value : { ...normaliseStation(null, cfg), error: settled[i].reason?.message }));
 }
 
