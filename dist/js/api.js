@@ -105,7 +105,9 @@ export const liveWindowStart = (now = Date.now()) => now - LIVE_WINDOW_DAYS * ti
 const iso = t => new Date(Math.floor(t / (15 * time.MIN)) * 15 * time.MIN).toISOString().replace('.000Z', 'Z');
 
 async function fetchMeasure(measure, since) {
-  const d = await getJSON(`${EA}/id/measures/${measure}/readings?_sorted&_limit=10000&since=${iso(since)}`, { ttl: 60_000 });
+  // Readings are the slowest EA call (35 s on a bad day), so allow far longer than the
+  // 20 s default: the page already shows the latest values while they load.
+  const d = await getJSON(`${EA}/id/measures/${measure}/readings?_sorted&_limit=10000&since=${iso(since)}`, { ttl: 60_000, timeout: 45_000 });
   return cleanReadings(d.items);
 }
 
