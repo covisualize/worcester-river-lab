@@ -139,6 +139,14 @@ test('review fixes: verdict, axis digits, staggered labels, heatmap bands, URL h
   const both = verdict({ key: 'normal' }, { key: 'rising' }, [{ id: '031WAF119', severityLevel: 2 }, { id: '031FWFSE440', severityLevel: 3 }], local);
   assert.equal(both.key, 'alert', 'the local alert counts; the remote warning does not');
   assert.equal(verdict({ key: 'normal' }, { key: 'rising' }, [{ id: 'X', severityLevel: 3 }], null).key, 'alert', 'unknown area list: treat as local');
+  // Warnings on Worcester's own rivers lead the "elsewhere" list (live on 26 Oct: Wye x2, Severn in Shropshire).
+  const { splitWarnings } = await import('../../dist/js/data.js');
+  const order = splitWarnings([
+    { id: 'A', area: 'River Wye in Gloucestershire', river: 'River Wye', severityLevel: 3 },
+    { id: 'B', area: 'River Wye in Herefordshire', river: 'River Wye', severityLevel: 2 },
+    { id: 'C', area: 'River Severn in Shropshire', river: 'River Severn', severityLevel: 3 },
+  ], new Set()).remote.map(w => w.id);
+  assert.deepEqual(order, ['C', 'B', 'A'], 'own river first, then most severe');
   assert.equal(verdict({ key: 'normal' }, { key: 'steady' }, [{ severityLevel: 4 }]).warning.key, 'clear', 'removed warnings do not count');
   assert.equal(verdict({ key: 'normal' }, { key: 'steady' }, null).warning.key, 'unknown');
   // Narrow ranges get 3 dp so ticks never repeat.
