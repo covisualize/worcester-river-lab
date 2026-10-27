@@ -33,7 +33,8 @@ Anything broken here takes priority over the backlog.
       on a real phone.
 - [x] Warnings near Worcester (EA flood areas within 12 km) vs elsewhere in the 40 km search:
       only local ones colour the Overview verdict.
-- [ ] Flood info drawer and map: tag each warning "near Worcester" or "elsewhere".
+- [x] Flood info drawer and header badge: warnings tagged "near Worcester" or "elsewhere".
+- [ ] Map: warning areas outside the 12 km set are not drawn at all; show faraway active ones.
 - [ ] Chart time-axis ticks follow the viewer's local timezone; make tick placement
       follow UK midnights for non-UK viewers (labels are already UK time).
 - [ ] Flood-warning history: show warnings issued in the last 24 h with their timeline
@@ -53,6 +54,16 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-10-27 — daily/2026-10-27-near-elsewhere — Health: site live on desktop+mobile, no console
+  errors; all 7 gauges current (~21 min, Bransford too); rivers rising after rain (Bewdley 2.04 m,
+  Kempsey 2.57 m, Diglis 1.04 m, all inside typical range); deploys green; no open PRs. Found on
+  the live site: the Overview said "No warnings near Worcester" but the Flood info drawer said
+  "1 in force" with no location and the header badge still counted the faraway alert. Change: the
+  drawer and header badge use the Overview's near/elsewhere rule (near first, tagged; elsewhere
+  under its own heading; badge counts only near; title says how many are elsewhere). The new
+  open-drawer axe audit (light and dark) also found three older drawer issues, now fixed: the
+  alert label's contrast, card titles skipping a heading level, and the scrollable tables not
+  being keyboard-focusable; plus the "falling" chip's contrast.
 - 2026-10-26 — owner request ("show Diglis as soon as its data arrives") — The first picture no
   longer waits for all seven gauges: Diglis's own metadata (latest level, typical range) draws it
   the moment it arrives, the warnings join when they arrive, and Diglis's reading history starts
