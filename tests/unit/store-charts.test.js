@@ -250,7 +250,8 @@ test('the map library loads on first use, not with every page', () => {
   assert.match(html, /rel='preload'|l\.rel='preload'/, 'direct links to Map/Explore preload it');
   assert.match(main, /loadLeaflet/);
   assert.match(main, /NEEDS_LEAFLET = new Set\(\['map', 'explore'\]\)/);
-  assert.match(main, /insertBefore\(css, document\.querySelector\('link\[href\$="app\.css"\]'\)\)/, 'stylesheet stays ahead of app.css in the cascade');
+  assert.match(main, /insertBefore\(el, document\.querySelector\('link\[href\$="app\.css"\]'\)\)/, 'stylesheet stays ahead of app.css in the cascade');
+  assert.match(main, /leafletParts = \{ js: null, css: null \}/, 'script and stylesheet are tracked separately so a retry fetches the failed one');
   for (const f of ['overview', 'analysis', 'history', 'intel']) {
     assert.ok(!/\bL\./.test(readFileSync(new URL(`../../dist/js/views/${f}.js`, import.meta.url), 'utf8')), `${f}.js does not use Leaflet`);
   }

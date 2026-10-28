@@ -80,7 +80,7 @@ async function open(browser, { path = '/', viewport, device, offline = false, wi
   await page.clock.setFixedTime(NOW);
   const errors = [];
   const requested = [];
-  let leafletHits = 0;
+  let leafletHits = 0, leafletCssHits = 0;
   page.on('request', r => requested.push(new URL(r.url()).pathname));
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', msg => { if (msg.type() === 'error' && !/Failed to load resource/.test(msg.text())) errors.push(msg.text()); });
@@ -91,6 +91,8 @@ async function open(browser, { path = '/', viewport, device, offline = false, wi
       if (p.endsWith('/')) p += 'index.html';
       // 'noleaflet': the map library fails on its first two requests only, so "Try again" can succeed.
       if (scenario === 'noleaflet' && p.endsWith('/vendor/leaflet/leaflet.js') && leafletHits++ < 2) return route.abort('failed');
+      // 'nocss': the script loads but the stylesheet fails once; a retry must fetch the stylesheet again.
+      if (scenario === 'nocss' && p.endsWith('/vendor/leaflet/leaflet.css') && leafletCssHits++ < 1) return route.abort('failed');
       try { return route.fulfill({ body: await readFile(join(root, p)), contentType: types[extname(p)] || 'application/octet-stream' }); } catch { return route.fulfill({ status: 404 }); }
     }
     if (offline) return route.abort('internetdisconnected');
@@ -281,6 +283,17 @@ try {
     assert.deepEqual(nl.errors, []);
   });
   await nl.context.close();
+  const nc = await open(browser, { path: '/?view=map', scenario: 'nocss' });
+  await step('if only the map stylesheet fails, Try again fetches it again (not a half-loaded map)', async () => {
+    await nc.page.waitForSelector('#view-map .lib-error', { timeout: 10000 });
+    await nc.page.click('#view-map .lib-error button');
+    await nc.page.waitForFunction(() => document.querySelectorAll('.gauge-marker').length === 7, null, { timeout: 15000 });
+    assert.equal(await nc.page.evaluate(() => getComputedStyle(document.querySelector('.leaflet-pane')).position), 'absolute', "Leaflet's stylesheet is applied");
+    assert.equal(nc.requested.filter(p => p.endsWith('/leaflet.css')).length, 2, 'stylesheet requested again');
+    assert.equal(nc.requested.filter(p => p.endsWith('/leaflet.js')).length, 1, 'script not requested again');
+    assert.deepEqual(nc.errors, []);
+  });
+  await nc.context.close();
   const dm = await open(browser, { path: '/?view=map' });
   await step('a direct link to the map loads straight into it', async () => {
     await dm.page.waitForFunction(() => document.querySelectorAll('.gauge-marker').length === 7, null, { timeout: 15000 });

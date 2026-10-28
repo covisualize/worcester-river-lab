@@ -99,19 +99,24 @@ let pendingSection = null;
 // Leaflet (~48 KB gzip with its stylesheet) is only used by Map and Explore, so it loads on first
 // use instead of with every page. Links to those views start the download on hover or focus.
 const NEEDS_LEAFLET = new Set(['map', 'explore']);
-let leafletP = null;
-const loadLeaflet = () => (leafletP ??= new Promise((resolve, reject) => {
-  if (window.L) return resolve();
-  const css = Object.assign(document.createElement('link'), { rel: 'stylesheet', href: 'vendor/leaflet/leaflet.css' });
-  const js = Object.assign(document.createElement('script'), { src: 'vendor/leaflet/leaflet.js' });
-  let pending = 2;
-  const done = () => { if (!--pending) resolve(); };
-  css.onload = js.onload = done;
-  css.onerror = js.onerror = () => { leafletP = null; reject(new Error('The map library could not be loaded')); };
-  // Ahead of app.css, as before: our rules (dark-theme attribution, etc.) must win the cascade.
-  document.head.insertBefore(css, document.querySelector('link[href$="app.css"]'));
-  document.head.append(js);
-}));
+// The script and the stylesheet are tracked separately, so a retry fetches only the one that
+// failed (a map with its script but without Leaflet's CSS would mount broken).
+const leafletParts = { js: null, css: null };
+function loadLeafletPart(kind) {
+  if (leafletParts[kind]) return leafletParts[kind];
+  return (leafletParts[kind] = new Promise((resolve, reject) => {
+    if (kind === 'js' && window.L) return resolve();
+    const el = kind === 'css'
+      ? Object.assign(document.createElement('link'), { rel: 'stylesheet', href: 'vendor/leaflet/leaflet.css' })
+      : Object.assign(document.createElement('script'), { src: 'vendor/leaflet/leaflet.js' });
+    el.onload = resolve;
+    el.onerror = () => { leafletParts[kind] = null; el.remove(); reject(new Error('The map library could not be loaded')); };
+    // Ahead of app.css, as before: our rules (dark-theme attribution, etc.) must win the cascade.
+    if (kind === 'css') document.head.insertBefore(el, document.querySelector('link[href$="app.css"]'));
+    else document.head.append(el);
+  }));
+}
+const loadLeaflet = () => Promise.all([loadLeafletPart('css'), loadLeafletPart('js')]);
 $$('[data-nav="map"], [data-nav="explore"], [data-go="map"], [data-go="explore"]').forEach(el => {
   for (const ev of ['pointerenter', 'focus']) el.addEventListener(ev, () => loadLeaflet().catch(() => {}), { once: true });
 });
