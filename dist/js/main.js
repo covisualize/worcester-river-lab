@@ -1,5 +1,5 @@
 // Application bootstrap: state, routing, shared helpers and status UI.
-import { $, $$, esc, setDemoExport, tokens, reducedMotion, toggleFullscreen, toast, resizeAll } from './ui.js';
+import { $, $$, esc, setDemoExport, tokens, reducedMotion, toggleFullscreen, toast, resizeAll, errorBox } from './ui.js';
 import { createStore, decode, VIEWS } from './store.js';
 import { createLive } from './live.js';
 import { STATIONS, RANGES } from './config.js';
@@ -96,16 +96,50 @@ const rendered = new Set();
 let dataReady = false;
 let pendingSection = null;
 
+// Leaflet (~48 KB gzip with its stylesheet) is only used by Map and Explore, so it loads on first
+// use instead of with every page. Links to those views start the download on hover or focus.
+const NEEDS_LEAFLET = new Set(['map', 'explore']);
+let leafletP = null;
+const loadLeaflet = () => (leafletP ??= new Promise((resolve, reject) => {
+  if (window.L) return resolve();
+  const css = Object.assign(document.createElement('link'), { rel: 'stylesheet', href: 'vendor/leaflet/leaflet.css' });
+  const js = Object.assign(document.createElement('script'), { src: 'vendor/leaflet/leaflet.js' });
+  let pending = 2;
+  const done = () => { if (!--pending) resolve(); };
+  css.onload = js.onload = done;
+  css.onerror = js.onerror = () => { leafletP = null; reject(new Error('The map library could not be loaded')); };
+  // Ahead of app.css, as before: our rules (dark-theme attribution, etc.) must win the cascade.
+  document.head.insertBefore(css, document.querySelector('link[href$="app.css"]'));
+  document.head.append(js);
+}));
+$$('[data-nav="map"], [data-nav="explore"], [data-go="map"], [data-go="explore"]').forEach(el => {
+  for (const ev of ['pointerenter', 'focus']) el.addEventListener(ev, () => loadLeaflet().catch(() => {}), { once: true });
+});
+
 function refreshView(v) {
+  if (!mounted.has(v)) return; // e.g. Map while its library is still loading
   if (!rendered.has(v)) { views[v].render(); rendered.add(v); }
   else views[v].onData?.();
 }
 
-function show(view) {
+let showSeq = 0;
+async function show(view) {
+  const seq = ++showSeq;
   for (const v of VIEWS) $(`#view-${v}`).hidden = v !== view;
   $$('[data-nav]').forEach(b => (b.dataset.nav === view ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current')));
   document.title = `${{ overview: 'Live overview', map: 'River map', analysis: 'Analysis', explore: 'Explore', history: 'History' }[view]} · Worcester River`;
   const v = views[view];
+  if (NEEDS_LEAFLET.has(view) && !mounted.has(view)) {
+    $(`#view-${view} .lib-error`)?.remove();
+    try { await loadLeaflet(); } catch (e) {
+      const box = errorBox(e.message, () => show(view));
+      box.classList.add('lib-error');
+      box.querySelector('strong').textContent = 'Map unavailable.';
+      $(`#view-${view}`).prepend(box);
+      return;
+    }
+    if (seq !== showSeq) return; // the visitor moved on while it loaded
+  }
   if (!mounted.has(view)) { v.mount(); mounted.add(view); }
   if (dataReady) refreshView(view);
   for (const k of VIEWS) if (k !== view) views[k].hide?.();

@@ -29,8 +29,10 @@ Anything broken here takes priority over the backlog.
       all 7 gauges respond) and outage messages are plain English instead of "Failed to fetch".
 - [x] Performance, step 1: slim ECharts bundle (only the charts/components used; built by
       `npm run vendor` from scripts/echarts-entry.mjs): 339 → 218 KB gzip, 1034 → 643 KB to parse.
-- [ ] Performance, next: lazy-load Leaflet (43 KB gzip) on first Map/Explore visit; Lighthouse
-      on a real phone.
+- [x] Performance, step 2: Leaflet (+ its stylesheet, 45,890 bytes gzip) loads on first Map/Explore
+      use.
+- [ ] Performance, next: Lighthouse on a real phone; consider deferring the ECharts bundle (218 KB
+      gzip) the same way for views that draw no chart on first paint (it is needed on Overview).
 - [x] Warnings near Worcester (EA flood areas within 12 km) vs elsewhere in the 40 km search:
       only local ones colour the Overview verdict.
 - [ ] Flood info drawer and map: tag each warning "near Worcester" or "elsewhere".
@@ -53,6 +55,15 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-10-28 — daily/2026-10-28-lazy-leaflet — Health: site live on desktop+mobile, no console
+  errors; all 7 gauges current (~22 min; Bransford ~52 min); rivers falling back after the rise
+  (Bewdley 1.52 m, Diglis 0.90 m); one alert elsewhere; deploys green. PR #14 (near/elsewhere
+  drawer) still open, so untouched. Change: Leaflet and its stylesheet (45,890 bytes gzip) now load
+  on first use of Map or Explore, not with every page. Hover/focus on the Map/Explore links starts
+  the download, a direct ?view=map link preloads it, a failed load shows "Map unavailable" with
+  Try again. The stylesheet is inserted ahead of app.css so the cascade is unchanged (the first
+  attempt appended it and broke a dark-theme contrast rule; the axe audit caught it). Verified
+  with live EA data on desktop and mobile; new e2e checks fail against the old eager loading.
 - 2026-10-26 — owner request ("show Diglis as soon as its data arrives") — The first picture no
   longer waits for all seven gauges: Diglis's own metadata (latest level, typical range) draws it
   the moment it arrives, the warnings join when they arrive, and Diglis's reading history starts
