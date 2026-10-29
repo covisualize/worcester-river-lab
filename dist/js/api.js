@@ -8,6 +8,12 @@ const responseCache = new Map(); // url -> { at, data }
 const inflight = new Map();      // url -> Promise
 export const netLog = { requests: 0, failures: 0, lastError: null, lastSuccess: null };
 
+// Test hook: forget every cache and counter so each unit test starts from a clean data layer.
+export function resetForTests() {
+  responseCache.clear(); inflight.clear(); seriesCache.clear(); staticCache.clear();
+  Object.assign(netLog, { requests: 0, failures: 0, lastError: null, lastSuccess: null });
+}
+
 export async function getJSON(url, { ttl = 60_000, timeout = 20_000, retries = 1 } = {}) {
   const hit = responseCache.get(url);
   if (hit && Date.now() - hit.at < ttl) return hit.data;
@@ -38,7 +44,7 @@ export async function getJSON(url, { ttl = 60_000, timeout = 20_000, retries = 1
 
 // Plain-English reasons; raw browser errors ("Failed to fetch") mean nothing
 // to residents. A blocked or failed network request surfaces as a TypeError.
-export function describeError(e, online = typeof navigator === 'undefined' || navigator.onLine) {
+export function describeError(e, online = typeof navigator === 'undefined' || navigator.onLine !== false) {
   if (!online) return 'You appear to be offline';
   if (e?.name === 'TimeoutError' || e?.name === 'AbortError') return 'The Environment Agency service took too long to respond';
   if (e?.name === 'TypeError') return 'The Environment Agency service could not be reached';
