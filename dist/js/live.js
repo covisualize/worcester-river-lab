@@ -111,11 +111,12 @@ export function createLive({ demo = null } = {}) {
 
         if (ok) {
           live.status = { mode: 'live', updatedAt: Date.now(), error: ok < live.stations.length ? `${live.stations.length - ok} station(s) did not respond` : null, refreshing: false };
-        } else if (live.stations.some(s => s.latest) && (!live.status.updatedAt || (live.status.partial && gotMeta))) {
+        } else if (gotMeta && live.stations.some(s => s.latest) && (!live.status.updatedAt || live.status.partial)) {
           // The history failed but the gauges' latest values are live: keep them rather than
           // swap to an older snapshot, say so, and retry soon. A retry that fails the same way
-          // stays here (only while this refresh's gauge details did arrive: `gotMeta`), so the
-          // notice and the retries continue instead of turning into "could not refresh".
+          // stays here, so the notice and the retries continue instead of turning into "could
+          // not refresh". It needs this refresh's gauge details to have arrived (`gotMeta`), also
+          // the first time: details kept from the saved snapshot must never pass as live ones.
           live.status = { mode: 'live', updatedAt: Date.now(), error: api.netLog.lastError?.message || 'Reading history unavailable', refreshing: false, partial: true };
           clearTimeout(retryTimer);
           retryTimer = setTimeout(() => { if (live.status.partial) live.refresh(); }, 60_000);

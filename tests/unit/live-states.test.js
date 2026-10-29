@@ -143,6 +143,21 @@ test('EA unreachable: the shipped all-gauge snapshot is used, labelled with its 
   assert.equal(live.primary().scale.high, 2.8);
 });
 
+test('an ongoing outage keeps the snapshot provenance: a second failed refresh does not promote snapshot values to "live"', async () => {
+  installEA({ fail: () => 'network' });
+  live = createLive();
+  await live.refresh();
+  assert.equal(live.status.mode, 'snapshot');
+  const capturedAt = live.status.snapshotAt;
+  api.resetForTests();
+  await live.refresh();
+  assert.equal(live.status.mode, 'snapshot', 'still the labelled snapshot, not partial-live');
+  assert.ok(!live.status.partial);
+  assert.equal(live.status.snapshotAt, capturedAt, 'with its capture time');
+  assert.equal(live.status.updatedAt, null, 'no live success is claimed');
+  assert.ok(gaugesWithReadings() >= 5);
+});
+
 test('EA unreachable and no snapshot shipped: an honest error, not an empty "live" page', async () => {
   installEA({ fail: () => 'network', staticFiles: false });
   live = createLive();
