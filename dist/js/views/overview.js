@@ -234,7 +234,7 @@ export function createOverview(ctx) {
       const tr = trend(r.rate);
       return `<article class="station${r.cfg.primary ? ' is-primary' : ''}" data-id="${r.cfg.id}">
         <div class="station-top"><div><h3>${esc(r.st?.label || r.cfg.label)}</h3><div class="river">${esc(r.cfg.river)} · ${esc(r.cfg.role)}</div></div><span class="chip" data-k="${tr.key}" title="${esc(tr.label)}">${tr.arrow}</span></div>
-        <div class="station-val">${r.last ? r.last[1].toFixed(2) : '—'}<small> m</small> <small>${r.c24 ? fmt.signed(r.c24.delta * 100, 1, ' cm / 24 h') : ''}</small></div>
+        <div class="station-val">${r.last ? r.last[1].toFixed(2) : '—'}<small> m</small> <small>${r.c24 ? fmt.signed(r.c24.delta * 100, 1, '\u00a0cm\u00a0/\u00a024\u00a0h') : ''}</small></div>
         ${sparkline(r.series, { width: 200, height: 36, color: ctx.colorOf(r.cfg.id), band: r.st?.scale })}
         <div class="range-meter" data-k="${r.pos.key}" title="${esc(r.pos.label)}${pct != null ? ` (${Math.round(r.pos.pct)}%)` : ''}"><span style="left:${pct ?? 0}%;${pct == null ? 'display:none' : ''}"></span></div>
         <div class="station-meta"><span>${esc(r.pos.label)}</span><span title="${r.last ? esc(fmt.full(r.last[0])) : ''}">${r.last ? (r.fr.key === 'stale' || r.fr.key === 'recent' ? `${esc(r.fr.label)}: last reading ${fmt.time(r.last[0])} (${esc(fmt.age(r.fr.ageMin))}); the EA has not yet published a newer one` : `${fmt.time(r.last[0])} · ${esc(r.fr.label)}`) : esc(r.st?.error || 'No data')}</span></div>
