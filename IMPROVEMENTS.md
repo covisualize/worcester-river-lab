@@ -54,6 +54,14 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-10-30 — daily/2026-10-30-nbsp-24h — Health: site live on desktop+mobile, no console errors;
+  all 7 gauges current (23 min; Diglis, Kempsey and Bransford 38 min, normal for their 15-min
+  cycle); no warnings in force; rivers falling (Bewdley 1.28 m, Diglis 0.82 m); Pages deploy and
+  weekly refresh green (last 26 Oct; next refresh Mon 2 Nov). PRs #14, #15 and #16 still open, so
+  untouched (branched from main). Change: the station-card change label ("−12.5 cm / 24 h") used
+  ordinary spaces and could break so "h" sat alone on a phone line; it now uses non-breaking
+  spaces. Test: new e2e at 320 px that squeezes the line and fails if the label wraps; confirmed it
+  fails on the old code. Checked against live EA data at 320 px: all seven cards on one line.
 - 2026-10-27 — daily/2026-10-27-near-elsewhere — Health: site live on desktop+mobile, no console
   errors; all 7 gauges current (~21 min, Bransford too); rivers rising after rain (Bewdley 2.04 m,
   Kempsey 2.57 m, Diglis 1.04 m, all inside typical range); deploys green; no open PRs. Found on
