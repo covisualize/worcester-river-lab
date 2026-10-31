@@ -79,6 +79,9 @@ async function open(browser, { path = '/', viewport, device, offline = false, wi
   const page = await context.newPage();
   await page.clock.setFixedTime(NOW);
   const errors = [];
+  const requested = [];
+  let leafletHits = 0, leafletCssHits = 0;
+  page.on('request', r => requested.push(new URL(r.url()).pathname));
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', msg => { if (msg.type() === 'error' && !/Failed to load resource/.test(msg.text())) errors.push(msg.text()); });
   await context.route('**/*', async route => {
@@ -86,6 +89,10 @@ async function open(browser, { path = '/', viewport, device, offline = false, wi
     if (url.startsWith(ORIGIN)) {
       let p = new URL(url).pathname;
       if (p.endsWith('/')) p += 'index.html';
+      // 'noleaflet': the map library fails on its first two requests only, so "Try again" can succeed.
+      if (scenario === 'noleaflet' && p.endsWith('/vendor/leaflet/leaflet.js') && leafletHits++ < 2) return route.abort('failed');
+      // 'nocss': the script loads but the stylesheet fails once; a retry must fetch the stylesheet again.
+      if (scenario === 'nocss' && p.endsWith('/vendor/leaflet/leaflet.css') && leafletCssHits++ < 1) return route.abort('failed');
       try { return route.fulfill({ body: await readFile(join(root, p)), contentType: types[extname(p)] || 'application/octet-stream' }); } catch { return route.fulfill({ status: 404 }); }
     }
     if (offline) return route.abort('internetdisconnected');
@@ -102,7 +109,7 @@ async function open(browser, { path = '/', viewport, device, offline = false, wi
     return body ? route.fulfill({ json: body }) : route.abort();
   });
   await page.goto(ORIGIN + path);
-  return { page, context, errors };
+  return { page, context, errors, requested };
 }
 
 const waitLive = page => page.waitForFunction(() => window.__wr?.live.status.mode === 'live', null, { timeout: 20000 });
@@ -114,7 +121,7 @@ const step = async (name, fn) => {
 const browser = await chromium.launch();
 try {
   /* ---------- Desktop, live (mocked) ---------- */
-  const { page, errors } = await open(browser);
+  const { page, errors, requested } = await open(browser);
   await waitLive(page);
   const latest = fx.readings['2085-level-stage-i-15_min-mASD'][0];
 
@@ -144,17 +151,23 @@ try {
     await page.waitForSelector('#intel.open .warn-card');
     assert.match(await page.textContent('#intel .warn-card'), /Flood Alert/);
     assert.equal(await page.textContent('#intel-badge'), '1');
+    assert.equal(await page.getAttribute('#intel .warn-card', 'data-where'), 'near');
+    assert.match(await page.textContent('#intel .warn-card'), /Near Worcester/);
+    assert.match(await page.textContent('#intel [data-sec="warnings"] summary'), /1 near Worcester/);
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('#intel').classList.contains('open'));
   });
 
   await step('keyboard shortcut opens the map; markers and station panel work', async () => {
+    assert.equal(await page.evaluate(() => typeof window.L), 'undefined', 'the map library is not loaded until the map is opened');
+    assert.ok(!requested.some(p => p.includes('leaflet')), 'and was never requested for the Overview');
     await page.keyboard.press('2');
     await page.waitForFunction(() => location.search.includes('view=map'));
     await page.waitForFunction(() => document.querySelectorAll('.gauge-marker').length === 7);
     await page.click('#map-list button[data-id="2086"]');
     await page.waitForSelector('#map-panel:not([hidden]) .panel-title');
     assert.equal(await page.textContent('#map-panel .panel-title'), 'Bransford');
+    assert.ok(requested.some(p => p.endsWith('/vendor/leaflet/leaflet.js')) && requested.some(p => p.endsWith('/vendor/leaflet/leaflet.css')), 'loaded on first use');
   });
 
   await step('analysis: station chips and measures update the shared state', async () => {
@@ -228,6 +241,8 @@ try {
     assert.match(await hi.page.textContent('#ov-summary'), /above.*typical range/);
     assert.match(await hi.page.textContent('#ov-summary'), /1 flood warning and 1 flood alert/);
     assert.match(await hi.page.textContent('#ov-warn-title'), /2 warnings\/alerts near Worcester/);
+    assert.equal(await hi.page.textContent('#intel-badge'), '2', 'header count: both are near Worcester');
+    assert.equal(await hi.page.getAttribute('#intel-open', 'data-k'), 'warning');
     assert.equal(await hi.page.textContent('#ov-band'), 'Above typical range');
     // KPI numbers count up for ~0.9 s after each redraw (and every update restarts it): wait for the settled value.
     await hi.page.waitForFunction(() => /Above typical high\s*2\.47/.test(document.querySelector('.kpi[data-id="room"]').textContent), null, { timeout: 6000 });
@@ -250,6 +265,47 @@ try {
     assert.match(await slow.page.textContent('#ov-trend'), /Steady|Rising|Falling/, 'the trend arrives with the history');
   });
   await slow.context.close();
+  const lazy = await open(browser);
+  await step('hovering the Map link starts loading the map library before the click', async () => {
+    await waitLive(lazy.page);
+    assert.equal(await lazy.page.evaluate(() => typeof window.L), 'undefined');
+    await lazy.page.hover('.primary-nav [data-nav="map"]');
+    await lazy.page.waitForFunction(() => typeof window.L !== 'undefined', null, { timeout: 5000 });
+    assert.ok(await lazy.page.isVisible('#view-overview'), 'still on the Overview');
+  });
+  await lazy.context.close();
+  const nl = await open(browser, { path: '/?view=map', scenario: 'noleaflet' });
+  await step('a failed map library shows "Map unavailable" with a working retry; other views are unaffected', async () => {
+    await nl.page.waitForSelector('#view-map .lib-error', { timeout: 10000 });
+    assert.match(await nl.page.textContent('#view-map .lib-error'), /Map unavailable\..*could not be loaded/);
+    await nl.page.keyboard.press('1');
+    await nl.page.waitForFunction(() => !document.querySelector('#view-overview').hidden && document.querySelector('#ov-level').textContent !== '—', null, { timeout: 15000 });
+    await nl.page.keyboard.press('2');
+    await nl.page.waitForSelector('#view-map .lib-error', { timeout: 10000 }); // second failure
+    await nl.page.click('#view-map .lib-error button');
+    await nl.page.waitForFunction(() => document.querySelectorAll('.gauge-marker').length === 7, null, { timeout: 15000 });
+    assert.equal(await nl.page.locator('#view-map .lib-error').count(), 0, 'the error is cleared once it loads');
+    assert.deepEqual(nl.errors, []);
+  });
+  await nl.context.close();
+  const nc = await open(browser, { path: '/?view=map', scenario: 'nocss' });
+  await step('if only the map stylesheet fails, Try again fetches it again (not a half-loaded map)', async () => {
+    await nc.page.waitForSelector('#view-map .lib-error', { timeout: 10000 });
+    await nc.page.click('#view-map .lib-error button');
+    await nc.page.waitForFunction(() => document.querySelectorAll('.gauge-marker').length === 7, null, { timeout: 15000 });
+    assert.equal(await nc.page.evaluate(() => getComputedStyle(document.querySelector('.leaflet-pane')).position), 'absolute', "Leaflet's stylesheet is applied");
+    assert.equal(nc.requested.filter(p => p.endsWith('/leaflet.css')).length, 2, 'stylesheet requested again');
+    assert.equal(nc.requested.filter(p => p.endsWith('/leaflet.js')).length, 1, 'script not requested again');
+    assert.deepEqual(nc.errors, []);
+  });
+  await nc.context.close();
+  const dm = await open(browser, { path: '/?view=map' });
+  await step('a direct link to the map loads straight into it', async () => {
+    await dm.page.waitForFunction(() => document.querySelectorAll('.gauge-marker').length === 7, null, { timeout: 15000 });
+    assert.ok(await dm.page.isVisible('#view-map'));
+    assert.deepEqual(dm.errors, []);
+  });
+  await dm.context.close();
   const rs = await open(browser, { scenario: 'remoteslow' });
   await step('a faraway alert counted as local while the area list is unknown is corrected when it arrives, before readings', async () => {
     await rs.page.waitForFunction(() => window.__wr?.live.status.metadata && window.__wr.live.floods && !window.__wr.live.localAreas, null, { timeout: 8000 });
@@ -305,6 +361,23 @@ try {
     const summary = await far.page.textContent('#ov-summary');
     assert.match(summary, /No flood warnings or alerts near Worcester\. 2 flood alerts elsewhere within 40 km/);
     assert.match(summary, /River Severn in Shropshire[^;]*; River Wye in Herefordshire/, 'every name is listed, own river first');
+    // The Flood info drawer and its header badge follow the same rule as the Overview.
+    assert.ok(await far.page.isHidden('#intel-badge'), 'no red count for warnings that are not near Worcester');
+    assert.match(await far.page.getAttribute('#intel-open', 'title'), /0 flood warning\(s\)\/alert\(s\) near Worcester; 2 elsewhere within 40 km/);
+    await far.page.click('#intel-open');
+    await far.page.waitForSelector('#intel.open .warn-card');
+    assert.match(await far.page.textContent('#intel [data-sec="warnings"] summary'), /None near Worcester · 2 elsewhere/);
+    assert.match(await far.page.textContent('#intel .all-clear'), /No flood warnings or alerts near Worcester/);
+    assert.match(await far.page.textContent('#intel [data-sec="warnings"]'), /Elsewhere within 40 km, not near Worcester/);
+    assert.equal(await far.page.locator('#intel .warn-card[data-where="elsewhere"]').count(), 2);
+    assert.equal(await far.page.locator('#intel .warn-card[data-where="near"]').count(), 0);
+    assert.match(await far.page.textContent('#intel .warn-card'), /River Severn in Shropshire/, 'own river first');
+    await far.page.waitForFunction(() => !document.querySelector('.toast'), null, { timeout: 6000 }).catch(() => {});
+    await far.page.waitForTimeout(600);
+    assert.deepEqual(await axeViolations(far.page), [], 'the open drawer is accessible (light)');
+    await far.page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+    await far.page.waitForTimeout(400);
+    assert.deepEqual(await axeViolations(far.page), [], 'the open drawer is accessible (dark)');
   });
   await far.context.close();
 
