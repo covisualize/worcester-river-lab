@@ -64,6 +64,15 @@ Anything broken here takes priority over the backlog.
   ordinary spaces and could break so "h" sat alone on a phone line; it now uses non-breaking
   spaces. Test: new e2e at 320 px that squeezes the line and fails if the label wraps; confirmed it
   fails on the old code. Checked against live EA data at 320 px: all seven cards on one line.
+- 2026-10-28 — daily/2026-10-28-lazy-leaflet — Health: site live on desktop+mobile, no console
+  errors; all 7 gauges current (~22 min; Bransford ~52 min); rivers falling back after the rise
+  (Bewdley 1.52 m, Diglis 0.90 m); one alert elsewhere; deploys green. PR #14 (near/elsewhere
+  drawer) still open, so untouched. Change: Leaflet and its stylesheet (45,890 bytes gzip) now load
+  on first use of Map or Explore, not with every page. Hover/focus on the Map/Explore links starts
+  the download, a direct ?view=map link preloads it, a failed load shows "Map unavailable" with
+  Try again. The stylesheet is inserted ahead of app.css so the cascade is unchanged (the first
+  attempt appended it and broke a dark-theme contrast rule; the axe audit caught it). Verified
+  with live EA data on desktop and mobile; new e2e checks fail against the old eager loading.
 - 2026-10-27 — daily/2026-10-27-near-elsewhere — Health: site live on desktop+mobile, no console
   errors; all 7 gauges current (~21 min, Bransford too); rivers rising after rain (Bewdley 2.04 m,
   Kempsey 2.57 m, Diglis 1.04 m, all inside typical range); deploys green; no open PRs. Found on
@@ -74,15 +83,6 @@ Anything broken here takes priority over the backlog.
   open-drawer axe audit (light and dark) also found three older drawer issues, now fixed: the
   alert label's contrast, card titles skipping a heading level, and the scrollable tables not
   being keyboard-focusable; plus the "falling" chip's contrast.
-- 2026-10-28 — daily/2026-10-28-lazy-leaflet — Health: site live on desktop+mobile, no console
-  errors; all 7 gauges current (~22 min; Bransford ~52 min); rivers falling back after the rise
-  (Bewdley 1.52 m, Diglis 0.90 m); one alert elsewhere; deploys green. PR #14 (near/elsewhere
-  drawer) still open, so untouched. Change: Leaflet and its stylesheet (45,890 bytes gzip) now load
-  on first use of Map or Explore, not with every page. Hover/focus on the Map/Explore links starts
-  the download, a direct ?view=map link preloads it, a failed load shows "Map unavailable" with
-  Try again. The stylesheet is inserted ahead of app.css so the cascade is unchanged (the first
-  attempt appended it and broke a dark-theme contrast rule; the axe audit caught it). Verified
-  with live EA data on desktop and mobile; new e2e checks fail against the old eager loading.
 - 2026-10-26 — owner request ("show Diglis as soon as its data arrives") — The first picture no
   longer waits for all seven gauges: Diglis's own metadata (latest level, typical range) draws it
   the moment it arrives, the warnings join when they arrive, and Diglis's reading history starts
