@@ -144,6 +144,9 @@ try {
     await page.waitForSelector('#intel.open .warn-card');
     assert.match(await page.textContent('#intel .warn-card'), /Flood Alert/);
     assert.equal(await page.textContent('#intel-badge'), '1');
+    assert.equal(await page.getAttribute('#intel .warn-card', 'data-where'), 'near');
+    assert.match(await page.textContent('#intel .warn-card'), /Near Worcester/);
+    assert.match(await page.textContent('#intel [data-sec="warnings"] summary'), /1 near Worcester/);
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('#intel').classList.contains('open'));
   });
@@ -228,6 +231,8 @@ try {
     assert.match(await hi.page.textContent('#ov-summary'), /above.*typical range/);
     assert.match(await hi.page.textContent('#ov-summary'), /1 flood warning and 1 flood alert/);
     assert.match(await hi.page.textContent('#ov-warn-title'), /2 warnings\/alerts near Worcester/);
+    assert.equal(await hi.page.textContent('#intel-badge'), '2', 'header count: both are near Worcester');
+    assert.equal(await hi.page.getAttribute('#intel-open', 'data-k'), 'warning');
     assert.equal(await hi.page.textContent('#ov-band'), 'Above typical range');
     // KPI numbers count up for ~0.9 s after each redraw (and every update restarts it): wait for the settled value.
     await hi.page.waitForFunction(() => /Above typical high\s*2\.47/.test(document.querySelector('.kpi[data-id="room"]').textContent), null, { timeout: 6000 });
@@ -305,6 +310,23 @@ try {
     const summary = await far.page.textContent('#ov-summary');
     assert.match(summary, /No flood warnings or alerts near Worcester\. 2 flood alerts elsewhere within 40 km/);
     assert.match(summary, /River Severn in Shropshire[^;]*; River Wye in Herefordshire/, 'every name is listed, own river first');
+    // The Flood info drawer and its header badge follow the same rule as the Overview.
+    assert.ok(await far.page.isHidden('#intel-badge'), 'no red count for warnings that are not near Worcester');
+    assert.match(await far.page.getAttribute('#intel-open', 'title'), /0 flood warning\(s\)\/alert\(s\) near Worcester; 2 elsewhere within 40 km/);
+    await far.page.click('#intel-open');
+    await far.page.waitForSelector('#intel.open .warn-card');
+    assert.match(await far.page.textContent('#intel [data-sec="warnings"] summary'), /None near Worcester · 2 elsewhere/);
+    assert.match(await far.page.textContent('#intel .all-clear'), /No flood warnings or alerts near Worcester/);
+    assert.match(await far.page.textContent('#intel [data-sec="warnings"]'), /Elsewhere within 40 km, not near Worcester/);
+    assert.equal(await far.page.locator('#intel .warn-card[data-where="elsewhere"]').count(), 2);
+    assert.equal(await far.page.locator('#intel .warn-card[data-where="near"]').count(), 0);
+    assert.match(await far.page.textContent('#intel .warn-card'), /River Severn in Shropshire/, 'own river first');
+    await far.page.waitForFunction(() => !document.querySelector('.toast'), null, { timeout: 6000 }).catch(() => {});
+    await far.page.waitForTimeout(600);
+    assert.deepEqual(await axeViolations(far.page), [], 'the open drawer is accessible (light)');
+    await far.page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+    await far.page.waitForTimeout(400);
+    assert.deepEqual(await axeViolations(far.page), [], 'the open drawer is accessible (dark)');
   });
   await far.context.close();
 
