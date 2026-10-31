@@ -417,6 +417,16 @@ try {
       assert.ok(over <= 1, `overflows by ${over}px`);
     });
   }
+  await step('mobile overview: a card\'s "cm / 24 h" change never splits across lines', async () => {
+    await mob.page.setViewportSize({ width: 320, height: 700 });
+    await mob.page.click('.bottom-nav [data-nav="overview"]');
+    await mob.page.waitForSelector('#st-grid .station-val small:last-child');
+    // Squeeze the line so any breakable space inside the label would wrap, whatever the live numbers are.
+    const split = await mob.page.evaluate(() => [...document.querySelectorAll('#st-grid .station-val small:last-child')]
+      .map(el => (el.parentElement.style.width = '5.5em', el))
+      .filter(el => el.textContent.trim() && el.getClientRects().length > 1).map(el => el.textContent));
+    assert.deepEqual(split, [], 'wrapped onto more than one line');
+  });
   await step('no runtime errors on mobile', () => assert.deepEqual(mob.errors, []));
 } finally {
   await browser.close();
