@@ -15,6 +15,7 @@ const DEMO_WARNINGS = [
 export function createLive({ demo = null } = {}) {
   const target = new EventTarget();
   let timer = null;
+  let retryTimer = null; // the 60 s retry after a failed reading history
   let refreshing = null;
 
   const live = {
@@ -73,8 +74,11 @@ export function createLive({ demo = null } = {}) {
         };
         const floodsP = api.getFloods().then(f => { live.floods = f; live.floodsError = null; drawEarly(); return f; });
         const [stations, floods] = await Promise.allSettled([api.getStations({ onEach }), floodsP]);
+        // A gauge whose details failed to refresh keeps its last known details (latest reading,
+        // typical range): they carry their own timestamps, so the freshness labels stay honest.
+        const gotMeta = stations.status === 'fulfilled' && stations.value.some(s => !s.error);
         if (stations.status === 'fulfilled') {
-          live.stations = stations.value;
+          live.stations = stations.value.map(s => (s.error && live.byId[s.id]?.latest ? live.byId[s.id] : s));
           live.byId = Object.fromEntries(live.stations.map(s => [s.id, s]));
         }
         if (floods.status === 'fulfilled') { live.floods = floods.value; live.floodsError = null; }
@@ -107,13 +111,15 @@ export function createLive({ demo = null } = {}) {
 
         if (ok) {
           live.status = { mode: 'live', updatedAt: Date.now(), error: ok < live.stations.length ? `${live.stations.length - ok} station(s) did not respond` : null, refreshing: false };
-        } else if (live.stations.some(s => s.latest) && (!live.status.updatedAt || (live.status.partial && stations.status === 'fulfilled'))) {
+        } else if (gotMeta && live.stations.some(s => s.latest) && (!live.status.updatedAt || live.status.partial)) {
           // The history failed but the gauges' latest values are live: keep them rather than
           // swap to an older snapshot, say so, and retry soon. A retry that fails the same way
-          // stays here (only while this refresh's gauge data did arrive), so the notice and
-          // the retries continue instead of turning into "could not refresh".
+          // stays here, so the notice and the retries continue instead of turning into "could
+          // not refresh". It needs this refresh's gauge details to have arrived (`gotMeta`), also
+          // the first time: details kept from the saved snapshot must never pass as live ones.
           live.status = { mode: 'live', updatedAt: Date.now(), error: api.netLog.lastError?.message || 'Reading history unavailable', refreshing: false, partial: true };
-          setTimeout(() => { if (live.status.partial) live.refresh(); }, 60_000);
+          clearTimeout(retryTimer);
+          retryTimer = setTimeout(() => { if (live.status.partial) live.refresh(); }, 60_000);
         } else if (live.status.updatedAt) {
           live.status = { ...live.status, mode: 'stale', error: api.netLog.lastError?.message || 'Update failed', refreshing: false };
         } else {
@@ -128,6 +134,8 @@ export function createLive({ demo = null } = {}) {
     async useSnapshot() {
       try {
         const snap = await api.getSnapshotFallback();
+        // Neither shipped snapshot could be read: that is an error, not an empty "saved snapshot".
+        if (!Object.values(snap.series).some(s => s.length)) throw new Error('No saved snapshot available');
         for (const [id, s] of Object.entries(snap.stations)) { live.byId[id] = s; live.stations = live.stations.map(x => (x.id === id ? s : x)); }
         for (const [id, d] of Object.entries(snap.series)) if (d.length) live.series[id] = d;
         live.status = { mode: 'snapshot', updatedAt: null, snapshotAt: snap.capturedAt, error: api.netLog.lastError?.message || 'Live service unavailable', refreshing: false };
@@ -185,7 +193,7 @@ export function createLive({ demo = null } = {}) {
       addEventListener('offline', () => { live.status = { ...live.status, offline: true }; live.emit('status', live.status); });
       return live.refresh();
     },
-    stop() { clearInterval(timer); },
+    stop() { clearInterval(timer); clearTimeout(retryTimer); },
   };
   return live;
 }

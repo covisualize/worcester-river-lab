@@ -50,8 +50,8 @@ Anything broken here takes priority over the backlog.
       clearly marked as cached.
 - [ ] Shareable PNG/CSV of any chart view; print stylesheet for a one-page report.
 - [ ] Data-quality panel: per-station completeness for the selected window.
-- [ ] Extend unit tests to `api.js` normalisation of floods/flood areas and `live.js`
-      fallback paths.
+- [x] Unit tests for `api.js` normalisation and the `live.js` state machine (see 2026-10-29).
+- [x] Phone nit: keep "24 h" together in the station-card change line (non-breaking space; done in PR #17, 2026-10-30).
 - [ ] Optional custom domain once the owner buys one (see README).
 
 ## Log
@@ -64,6 +64,22 @@ Anything broken here takes priority over the backlog.
   ordinary spaces and could break so "h" sat alone on a phone line; it now uses non-breaking
   spaces. Test: new e2e at 320 px that squeezes the line and fails if the label wraps; confirmed it
   fails on the old code. Checked against live EA data at 320 px: all seven cards on one line.
+- 2026-10-29 — daily/2026-10-29-data-layer-tests — Health: site live on desktop+mobile, no console
+  errors; all 7 gauges current (~21 min; Bransford ~36 min); no warnings in force; rivers falling
+  (Bewdley 1.40 m, Diglis 0.87 m); deploys green. PRs #14 and #15 still open, so untouched. Change:
+  unit tests for the data layer, which had three incidents in a week and no unit coverage:
+  tests/unit/api-shapes.test.js (floods/areas/stations normalisation, reading cache and merge,
+  archive-vs-live ranges, snapshot fallbacks) and tests/unit/live-states.test.js (healthy, slow
+  readings, early draw, failed history and its retries, failed warnings, late area list, snapshot,
+  total outage), both on a stub that serves the real captured EA responses
+  (tests/unit/helpers/ea-stub.mjs). Writing them found four defects, fixed: (1) the PR #12 retry
+  check `stations.status === 'fulfilled'` was always true, so a retry with every gauge failing
+  stayed "live" instead of going stale; (2) a failed gauge-details refresh threw away the last known
+  latest value and typical range; (3) with the EA down and the shipped snapshot unreadable the page
+  said "saved snapshot" with no data instead of an error; (4) a browser reporting no navigator.onLine
+  value was treated as offline. Small code hooks for tests: api.resetForTests(), live.stop() now also
+  cancels the 60 s retry. Found, not fixed: "−12.5 cm / 24 h" in the station cards can wrap its "h"
+  onto its own line on a phone (use a non-breaking space).
 - 2026-10-28 — daily/2026-10-28-lazy-leaflet — Health: site live on desktop+mobile, no console
   errors; all 7 gauges current (~22 min; Bransford ~52 min); rivers falling back after the rise
   (Bewdley 1.52 m, Diglis 0.90 m); one alert elsewhere; deploys green. PR #14 (near/elsewhere
