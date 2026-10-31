@@ -242,3 +242,17 @@ test('slim ECharts bundle includes every feature the charts use', () => {
   assert.match(html, /vendor\/echarts\.slim\.min\.js/);
   assert.ok(readFileSync(new URL('../../dist/vendor/echarts.slim.min.js', import.meta.url)).length > 100_000);
 });
+
+test('the map library loads on first use, not with every page', () => {
+  const html = readFileSync(new URL('../../dist/index.html', import.meta.url), 'utf8');
+  const main = readFileSync(new URL('../../dist/js/main.js', import.meta.url), 'utf8');
+  assert.ok(!/<script[^>]+leaflet\.js/.test(html) && !/<link[^>]+rel="stylesheet"[^>]+leaflet\.css/.test(html), 'not in the static page');
+  assert.match(html, /rel='preload'|l\.rel='preload'/, 'direct links to Map/Explore preload it');
+  assert.match(main, /loadLeaflet/);
+  assert.match(main, /NEEDS_LEAFLET = new Set\(\['map', 'explore'\]\)/);
+  assert.match(main, /insertBefore\(el, document\.querySelector\('link\[href\$="app\.css"\]'\)\)/, 'stylesheet stays ahead of app.css in the cascade');
+  assert.match(main, /leafletParts = \{ js: null, css: null \}/, 'script and stylesheet are tracked separately so a retry fetches the failed one');
+  for (const f of ['overview', 'analysis', 'history', 'intel']) {
+    assert.ok(!/\bL\./.test(readFileSync(new URL(`../../dist/js/views/${f}.js`, import.meta.url), 'utf8')), `${f}.js does not use Leaflet`);
+  }
+});
