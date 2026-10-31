@@ -36,7 +36,7 @@ Anything broken here takes priority over the backlog.
 - [x] Warnings near Worcester (EA flood areas within 12 km) vs elsewhere in the 40 km search:
       only local ones colour the Overview verdict.
 - [x] Flood info drawer and header badge: warnings tagged "near Worcester" or "elsewhere".
-- [ ] Map: warning areas outside the 12 km set are not drawn at all; show faraway active ones.
+- [x] Map: faraway active warnings (outside the 12 km set) were already drawn; their tooltips now say near Worcester or elsewhere (see 2026-10-31 second entry). This item's earlier wording was wrong.
 - [ ] Chart time-axis ticks follow the viewer's local timezone; make tick placement
       follow UK midnights for non-UK viewers (labels are already UK time).
 - [ ] Flood-warning history: show warnings issued in the last 24 h with their timeline
@@ -56,6 +56,18 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-10-31 — daily/2026-10-31-map-near-elsewhere — Health: site live on desktop+mobile, no console
+  errors; all 7 gauges current (20 min; Bransford 35 min); no warnings in force; rivers falling
+  (Bewdley 1.03 m, Diglis 0.76 m); Pages deploy green again after #18 (the run on the #18 merge
+  passed both jobs and the live site serves the 28 Oct lazy-map build); no open PRs. Change: the
+  backlog said the map did not draw warnings outside the 12 km set; reading `loadWarnings()` showed
+  it always has (any active warning gets its polygon). What was missing is that the map tooltip, unlike
+  the Overview and the Flood info drawer, did not say whether a warning is near Worcester or
+  elsewhere. It now does, from the same area list (`live.localAreas`), read when the tooltip opens so
+  a late list still counts; nothing is tagged until the list is known, and "no longer in force" areas
+  get no tag. Tests: two new e2e checks (faraway alert tagged elsewhere; local alert tagged near),
+  both fail on the old code. Live check: map draws 22 warning areas against the real EA API with no
+  errors; there is no live warning today, so a real faraway tooltip was not observed.
 - 2026-10-31 — daily/2026-10-31-pin-runner — Found when merging #14–#17: the Pages workflow's test job
   failed on every push since 30 Oct (so the site has not redeployed since 26 Oct) because
   `ubuntu-latest` is now Ubuntu 26.04, which Playwright 1.56.1 cannot install a browser on

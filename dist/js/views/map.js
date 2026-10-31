@@ -176,7 +176,9 @@ export function createMapView(ctx) {
         const a = targets[i], w = active.get(a.id), sev = w ? SEVERITY[w.severityLevel] : null;
         const color = !w || w.severityLevel === 4 ? ctx.T.muted : w.severityLevel <= 2 ? ctx.T.severe : ctx.T.alert;
         L.geoJSON(p.value, { style: { color, weight: w ? 2 : 1, fillColor: color, fillOpacity: w && w.severityLevel < 4 ? 0.28 : 0.07, dashArray: w ? null : '3 4' } })
-          .bindTooltip(`<b>${esc(a.label)}</b><br>${sev ? `<b style="color:${color}">${esc(sev.label)}</b>` : 'No warning in force'}<br><span style="opacity:.7">EA flood warning area ${esc(a.id)}</span>`, { sticky: true })
+          // A function, so the near/elsewhere tag reads the area list as it is when the tooltip opens
+          // (it may arrive after the polygons are drawn). Same rule as the Overview and the drawer.
+          .bindTooltip(() => `<b>${esc(a.label)}</b><br>${sev ? `<b style="color:${color}">${esc(sev.label)}</b>` : 'No warning in force'}${sev && sev.key !== 'removed' && live.localAreas ? `<br>${live.localAreas.has(a.id) ? 'Near Worcester' : 'Elsewhere within the 40 km search, not near Worcester'}` : ''}<br><span style="opacity:.7">EA flood warning area ${esc(a.id)}</span>`, { sticky: true })
           .on('click', () => window.open(`https://check-for-flooding.service.gov.uk/target-area/${encodeURIComponent(a.id)}`, '_blank', 'noopener'))
           .addTo(layers.warnings);
       });

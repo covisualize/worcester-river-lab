@@ -381,6 +381,38 @@ try {
   });
   await far.context.close();
 
+  /* ---------- Map: warning areas say whether they are near Worcester ---------- */
+  // The test polygons share one shape, so the last one drawn is on top: the remote alerts, appended after the local areas.
+  async function mapTooltip(scenario, drawn) {
+    const m = await open(browser, { scenario });
+    await waitLive(m.page);
+    await m.page.waitForFunction(() => window.__wr.live.localAreas, null, { timeout: 30000 });
+    await m.page.click('.primary-nav [data-nav="map"]');
+    await m.page.waitForFunction(() => n => document.querySelectorAll('#map .leaflet-overlay-pane path.leaflet-interactive').length >= n, drawn, { timeout: 30000 });
+    const box = await m.page.locator('#map .leaflet-overlay-pane path.leaflet-interactive').last().boundingBox();
+    const tip = m.page.locator('.leaflet-tooltip', { hasText: 'EA flood warning area' });
+    // Station markers sit on top of the polygon: probe points inside its triangle until one reaches it.
+    for (const [fx_, fy_] of [[0.9, 0.95], [0.7, 0.95], [0.5, 0.95], [0.95, 0.5], [0.95, 0.2], [0.3, 0.97]]) {
+      await m.page.mouse.move(box.x + box.width * fx_, box.y + box.height * fy_);
+      if (await tip.waitFor({ timeout: 1500 }).then(() => true, () => false)) break;
+    }
+    await tip.waitFor({ timeout: 1000 });
+    const text = await tip.textContent();
+    await m.context.close();
+    return text;
+  }
+  await step('map: a faraway alert is drawn and tagged "elsewhere"', async () => {
+    const t = await mapTooltip('remote', 4);
+    assert.match(t, /River Severn in Shropshire|River Wye in Herefordshire/);
+    assert.match(t, /Elsewhere within the 40 km search, not near Worcester/);
+  });
+  await step('map: an alert near Worcester is tagged "near Worcester"', async () => {
+    const t = await mapTooltip(null, 2);
+    assert.match(t, /River Severn in Worcestershire/);
+    assert.match(t, /Near Worcester/);
+    assert.doesNotMatch(t, /Elsewhere/);
+  });
+
   /* ---------- Offline: falls back to the labelled snapshot ---------- */
   const off = await open(browser, { offline: true });
   await step('offline mode shows the saved snapshot with a clear warning', async () => {
