@@ -48,11 +48,19 @@ Anything broken here takes priority over the backlog.
 - [ ] Shareable PNG/CSV of any chart view; print stylesheet for a one-page report.
 - [ ] Data-quality panel: per-station completeness for the selected window.
 - [x] Unit tests for `api.js` normalisation and the `live.js` state machine (see 2026-10-29).
-- [ ] Phone nit: keep "24 h" together in the station-card change line (non-breaking space).
+- [x] Phone nit: keep "24 h" together in the station-card change line (non-breaking space; done in PR #17, 2026-10-30).
 - [ ] Optional custom domain once the owner buys one (see README).
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-10-30 — daily/2026-10-30-nbsp-24h — Health: site live on desktop+mobile, no console errors;
+  all 7 gauges current (23 min; Diglis, Kempsey and Bransford 38 min, normal for their 15-min
+  cycle); no warnings in force; rivers falling (Bewdley 1.28 m, Diglis 0.82 m); Pages deploy and
+  weekly refresh green (last 26 Oct; next refresh Mon 2 Nov). PRs #14, #15 and #16 still open, so
+  untouched (branched from main). Change: the station-card change label ("−12.5 cm / 24 h") used
+  ordinary spaces and could break so "h" sat alone on a phone line; it now uses non-breaking
+  spaces. Test: new e2e at 320 px that squeezes the line and fails if the label wraps; confirmed it
+  fails on the old code. Checked against live EA data at 320 px: all seven cards on one line.
 - 2026-10-29 — daily/2026-10-29-data-layer-tests — Health: site live on desktop+mobile, no console
   errors; all 7 gauges current (~21 min; Bransford ~36 min); no warnings in force; rivers falling
   (Bewdley 1.40 m, Diglis 0.87 m); deploys green. PRs #14 and #15 still open, so untouched. Change:
