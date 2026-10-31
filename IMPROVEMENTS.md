@@ -56,6 +56,12 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-10-31 — daily/2026-10-31-pin-runner — Found when merging #14–#17: the Pages workflow's test job
+  failed on every push since 30 Oct (so the site has not redeployed since 26 Oct) because
+  `ubuntu-latest` is now Ubuntu 26.04, which Playwright 1.56.1 cannot install a browser on
+  ("does not support chromium on ubuntu26.04-x64"). Unit tests passed; the e2e step never ran.
+  Fix: pin the test job to `ubuntu-24.04`. Revisit (move back to latest) when Playwright is upgraded
+  to a version that supports 26.04.
 - 2026-10-30 — daily/2026-10-30-nbsp-24h — Health: site live on desktop+mobile, no console errors;
   all 7 gauges current (23 min; Diglis, Kempsey and Bransford 38 min, normal for their 15-min
   cycle); no warnings in force; rivers falling (Bewdley 1.28 m, Diglis 0.82 m); Pages deploy and
