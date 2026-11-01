@@ -72,6 +72,10 @@ Anything broken here takes priority over the backlog.
   the old code. Live check: Bewdley 44.6 m³/s at 07:30, matching the EA API. Noticed: the EA reports
   0.0 m³/s at Saxons Lode, which a visitor could read as a dry river; shown as published with the
   note, and flagged for the owner's call (hide it, or add a caveat) before flow history is built.
+  Codex found, and I confirmed, that the Feb 2020 demo showed Bewdley's real flow from the day the
+  bundled metadata was captured next to the replayed flood level; fixed twice over: the demo now clears
+  flow, and the panel only shows a flow reading that is within 2 h of the level beside it. Both have an
+  e2e test that fails without them.
 - 2026-10-31 — daily/2026-10-31-map-near-elsewhere — Health: site live on desktop+mobile, no console
   errors; all 7 gauges current (20 min; Bransford 35 min); no warnings in force; rivers falling
   (Bewdley 1.03 m, Diglis 0.76 m); Pages deploy green again after #18 (the run on the #18 merge

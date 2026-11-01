@@ -176,6 +176,13 @@ try {
     await page.waitForFunction(() => document.querySelector('#map-panel .panel-title')?.textContent === 'Bewdley');
     // 21:00 UTC on 18 Oct is 22:00 British Summer Time: times are shown in UK local time.
     assert.match(await page.textContent('#map-panel .kv'), /Flow \(EA\)\s*18\.5 m³\/s at 22:00/);
+    // A flow reading that is not from the same time as the level beside it is not shown.
+    await page.evaluate(() => { const s = window.__wr.live.byId['2001']; s.flow = { ...s.flow, t: s.flow.t - 24 * 3600e3 }; });
+    await page.click('#map-list button[data-id="2086"]');
+    await page.waitForFunction(() => document.querySelector('#map-panel .panel-title')?.textContent === 'Bransford');
+    await page.click('#map-list button[data-id="2001"]');
+    await page.waitForFunction(() => document.querySelector('#map-panel .panel-title')?.textContent === 'Bewdley');
+    assert.doesNotMatch(await page.textContent('#map-panel'), /Flow \(EA\)/, 'a day-old flow beside a current level is hidden');
   });
 
   await step('analysis: station chips and measures update the shared state', async () => {
@@ -456,6 +463,13 @@ try {
     await demo.page.waitForFunction(() => !document.querySelector('.toast'), null, { timeout: 6000 }).catch(() => {});
     if (process.env.E2E_SHOTS) await demo.page.screenshot({ path: `${process.env.E2E_SHOTS}/demo.png`, fullPage: false });
     assert.deepEqual(await axeViolations(demo.page), []);
+  });
+  await step('demo replay: a real flow reading is never shown beside the replayed flood level', async () => {
+    await demo.page.click('.primary-nav [data-nav="map"]');
+    await demo.page.waitForFunction(() => document.querySelectorAll('.gauge-marker').length === 7, null, { timeout: 15000 });
+    await demo.page.click('#map-list button[data-id="2001"]');
+    await demo.page.waitForFunction(() => document.querySelector('#map-panel .panel-title')?.textContent === 'Bewdley');
+    assert.doesNotMatch(await demo.page.textContent('#map-panel'), /Flow \(EA\)/);
   });
   await demo.context.close();
   const demoOff = await open(browser, { path: '/?demo=feb2020', offline: true });
