@@ -105,3 +105,19 @@ test('getSnapshotFallback: the shipped all-gauge file covers every gauge; withou
   const old = await api.getSnapshotFallback();
   assert.deepEqual(Object.keys(old.series).filter(k => old.series[k].length).sort(), ['2001', '2085']);
 });
+
+test('normaliseStation: keeps the EA\'s own latest flow where a gauge publishes one, and nothing otherwise', () => {
+  const bewdley = api.normaliseStation(fx.stations['2001'], STATIONS.find(x => x.id === '2001'));
+  assert.equal(bewdley.flow.value, 18.546);
+  assert.equal(bewdley.flow.unit, 'm3/s');
+  assert.equal(bewdley.flow.t, Date.parse('2026-10-18T21:00:00Z'));
+  assert.equal(bewdley.levelMeasure.includes('level'), true, 'the level measure is still the one chosen');
+  assert.equal(api.normaliseStation(fx.stations['2085'], DIGLIS).flow, null, 'level-only gauge');
+  const real = fx.stations['2001'];
+  const asList = Array.isArray(real.measures) ? real.measures : [real.measures];
+  // A flow measure whose latest reading is missing or not a number must not produce a figure.
+  for (const bad of [undefined, 'http://example/reading', { value: null }, { value: 'x', dateTime: '2026-10-18T21:00:00Z' }]) {
+    const measures = asList.map(m => (m.parameter === 'flow' ? { ...m, latestReading: bad } : m));
+    assert.equal(api.normaliseStation({ ...real, measures }, STATIONS.find(x => x.id === '2001')).flow, null);
+  }
+});

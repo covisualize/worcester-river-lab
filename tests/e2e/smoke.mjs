@@ -170,6 +170,14 @@ try {
     assert.ok(requested.some(p => p.endsWith('/vendor/leaflet/leaflet.js')) && requested.some(p => p.endsWith('/vendor/leaflet/leaflet.css')), 'loaded on first use');
   });
 
+  await step('map panel shows the EA\'s flow only for gauges that publish one', async () => {
+    assert.doesNotMatch(await page.textContent('#map-panel'), /Flow \(EA\)/, 'Bransford publishes level only');
+    await page.click('#map-list button[data-id="2001"]');
+    await page.waitForFunction(() => document.querySelector('#map-panel .panel-title')?.textContent === 'Bewdley');
+    // 21:00 UTC on 18 Oct is 22:00 British Summer Time: times are shown in UK local time.
+    assert.match(await page.textContent('#map-panel .kv'), /Flow \(EA\)\s*18\.5 m³\/s at 22:00/);
+  });
+
   await step('analysis: station chips and measures update the shared state', async () => {
     await page.click('[data-nav="analysis"]');
     await page.click('#an-stations button[data-id="2001"]');

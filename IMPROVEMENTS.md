@@ -43,8 +43,11 @@ Anything broken here takes priority over the backlog.
       (EA `/id/floods` includes severity 4 "no longer in force").
 - [ ] Upstream travel-time explorer: cross-correlate Bewdley → Diglis level changes over
       recent events to show the *observed* lag range (descriptive, not a forecast).
-- [ ] Flow data: Bewdley and Saxons Lode publish flow (m³/s); add as an Explore measure
-      with clear units.
+- [x] Flow data, step 1: the map panel shows the EA's latest flow (m³/s, with time) for the gauges that
+      publish it (Bewdley, Saxons Lode), labelled as EA-reported (see 2026-11-01).
+- [ ] Flow data, step 2: flow history as an Explore measure; needs the flow readings endpoint, a
+      units axis, and a decision on Saxons Lode (the EA reports 0.0 m³/s there, which may not mean
+      the river is dry).
 - [ ] Teme confluence view: Severn vs Teme contribution around Worcester during events.
 - [ ] Offline/PWA: cache the shell and last readings so the page opens without signal,
       clearly marked as cached.
@@ -56,6 +59,19 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-11-01 — daily/2026-11-01-flow-in-map-panel — Health: site live on desktop+mobile, no console
+  errors; deploy of #19 green and live (serves the map near/elsewhere tooltips); no open PRs. Six
+  gauges current (20 min). Bransford is delayed: its last reading is 05:30 and the EA API itself has
+  nothing newer (checked directly), so this is an EA publication delay; the site already says so on the
+  card ("Delayed data: last reading 05:30 (2 h 21 min ago); the EA has not yet published a newer
+  one"). The weekly data refresh runs tomorrow (Monday). Change: Bewdley and Saxons Lode publish
+  discharge as well as level. The station normaliser now keeps the EA's own latest flow reading
+  (`flow: {value, unit, t}`; absent, non-numeric or unexpanded readings give null), and the map panel
+  shows it as "Flow (EA)" with its time and a note that it is shown as received. Tests: a unit test on the
+  real captured responses and an e2e on the panel (Bewdley shows it, Bransford does not); both fail on
+  the old code. Live check: Bewdley 44.6 m³/s at 07:30, matching the EA API. Noticed: the EA reports
+  0.0 m³/s at Saxons Lode, which a visitor could read as a dry river; shown as published with the
+  note, and flagged for the owner's call (hide it, or add a caveat) before flow history is built.
 - 2026-10-31 — daily/2026-10-31-map-near-elsewhere — Health: site live on desktop+mobile, no console
   errors; all 7 gauges current (20 min; Bransford 35 min); no warnings in force; rivers falling
   (Bewdley 1.03 m, Diglis 0.76 m); Pages deploy green again after #18 (the run on the #18 merge

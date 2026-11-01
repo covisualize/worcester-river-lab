@@ -129,6 +129,7 @@ export function createMapView(ctx) {
       <p class="note">Last 24 hours. Shaded band = EA typical range.</p>
       <dl class="kv">
         ${row('Change, 24 h', c24 ? fmt.signed(c24.delta * 100, 1, ' cm') : '—')}
+        ${st.flow ? row('Flow (EA)', `${st.flow.value.toFixed(1)} ${st.flow.unit === 'm3/s' ? 'm³/s' : esc(st.flow.unit)} at ${esc(fmt.time(st.flow.t))}`) : ''}
         ${row('Typical range', sc.low != null ? `${sc.low.toFixed(2)}–${sc.high.toFixed(2)} m` : '—')}
         ${row('Highest recent', sc.highestRecent?.value != null ? `${sc.highestRecent.value.toFixed(2)} m (${fmt.dateYear(sc.highestRecent.t)})` : '—')}
         ${row('Maximum on record', sc.maxOnRecord?.value != null ? `${sc.maxOnRecord.value.toFixed(2)} m (${fmt.dateYear(sc.maxOnRecord.t)})` : '—')}
@@ -140,7 +141,7 @@ export function createMapView(ctx) {
         <button type="button" class="btn btn-small btn-ghost" data-go="analysis">Gauge</button>
         ${st.publicPage ? `<a class="btn btn-small btn-ghost" href="${esc(st.publicPage)}" target="_blank" rel="noopener">GOV.UK ↗</a>` : ''}
       </div>
-      <p class="note" style="margin-top:10px">Readings: Environment Agency real-time API. Reference levels: EA station metadata (stageScale). Typical range is not a flood-warning threshold.</p>`;
+      <p class="note" style="margin-top:10px">Readings: Environment Agency real-time API. Reference levels: EA station metadata (stageScale). Typical range is not a flood-warning threshold.${st.flow ? ' Flow is the discharge figure the EA publishes for this gauge, shown as received and not checked or adjusted here.' : ''}</p>`;
     panel.querySelector('.close').onclick = closePanel;
     panel.querySelector('[data-go="explore"]').onclick = () => ctx.go('explore', { compare: [id], station: id });
     panel.querySelector('[data-go="analysis"]').onclick = () => ctx.go('analysis', { station: id });
