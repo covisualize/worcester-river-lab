@@ -72,6 +72,8 @@ Anything broken here takes priority over the backlog.
   ago)". Note: on phones the pill is icon-only (CSS hides its text), so the extra wording is for
   desktop and tablet; phones still get the card message and the tooltip. Possible follow-up: tint
   the phone icon when any gauge is delayed.
+  Codex then found, and I confirmed, that the history can lag a gauge's own metadata reading (histories fail
+  but metadata updates), so `delayedGauges` now uses the newest of the two; unit test fails without it.
 - 2026-10-31 — daily/2026-10-31-map-near-elsewhere — Health: site live on desktop+mobile, no console
   errors; all 7 gauges current (20 min; Bransford 35 min); no warnings in force; rivers falling
   (Bewdley 1.03 m, Diglis 0.76 m); Pages deploy green again after #18 (the run on the #18 merge
