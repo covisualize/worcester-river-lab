@@ -54,10 +54,19 @@ function eaResponse(url, { withAlert, scenario }) {
   const u = new URL(url);
   const p = u.pathname;
   let m;
-  if ((m = p.match(/\/id\/stations\/(\w+)\.json$/))) return fx.stations[m[1]] ? { items: fx.stations[m[1]] } : null;
+  if ((m = p.match(/\/id\/stations\/(\w+)\.json$/))) {
+    if (scenario === 'delayed' && m[1] === '2086' && fx.stations[m[1]]) {
+      // Bransford's EA feed stops 4 h before "now" (as it did on 1-2 Nov 2026).
+      const st = JSON.parse(JSON.stringify(fx.stations[m[1]]));
+      for (const ms of Array.isArray(st.measures) ? st.measures : [st.measures]) if (ms.latestReading && typeof ms.latestReading === 'object') ms.latestReading.dateTime = new Date(NOW - 4 * 3600e3).toISOString();
+      return { items: st };
+    }
+    return fx.stations[m[1]] ? { items: fx.stations[m[1]] } : null;
+  }
   if ((m = p.match(/\/id\/measures\/([^/]+)\/readings$/))) {
     const since = Date.parse(u.searchParams.get('since') || 0);
     let rows = (fx.readings[m[1]] || []).filter(r => Date.parse(r.dateTime) >= since);
+    if (scenario === 'delayed' && m[1].startsWith('2086-')) rows = rows.filter(r => Date.parse(r.dateTime) <= NOW - 4 * 3600e3);
     if (scenario === 'high' && m[1].startsWith('2085-')) {
       const shift = FEB_2020_PEAK - fx.readings[m[1]][0].value;
       rows = rows.map(r => ({ ...r, value: +(r.value + shift).toFixed(3) }));
@@ -380,6 +389,20 @@ try {
     assert.deepEqual(await axeViolations(far.page), [], 'the open drawer is accessible (dark)');
   });
   await far.context.close();
+
+  /* ---------- A gauge the EA has not updated for hours is named in the status pill ---------- */
+  const lag = await open(browser, { scenario: 'delayed' });
+  await step('status pill: "Live" also says when another gauge is hours behind', async () => {
+    await waitLive(lag.page);
+    await lag.page.waitForFunction(() => /1 gauge delayed/.test(document.querySelector('#live-status').textContent), null, { timeout: 15000 });
+    assert.match(await lag.page.textContent('#live-status'), /^Live · \d\d:\d\d · 1 gauge delayed$/);
+    assert.match(await lag.page.getAttribute('#live-status', 'title'), /Delayed: Bransford, last reading .*; the EA has not published a newer one/);
+    assert.equal(await lag.page.getAttribute('#live-status', 'data-mode'), 'live', 'Diglis itself is current, so the pill is not in its warning state');
+  });
+  await lag.context.close();
+  await step('status pill: all gauges current means no extra words', async () => {
+    assert.match(await page.textContent('#live-status'), /^Live · \d\d:\d\d$/);
+  });
 
   /* ---------- Map: warning areas say whether they are near Worcester ---------- */
   // The test polygons share one shape, so the last one drawn is on top: the remote alerts, appended after the local areas.

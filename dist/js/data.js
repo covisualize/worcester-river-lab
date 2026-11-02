@@ -174,6 +174,15 @@ export function freshness(tMs, nowMs = Date.now()) {
   return { key: 'stale', label: 'Delayed data', ageMin };
 }
 
+// Gauges whose newest reading is older than the "delayed" threshold (EA publication lag, not an outage on our side).
+// `exceptId` leaves out a gauge that is already reported separately (the primary one).
+export function delayedGauges(stations, latestOf, nowMs = Date.now(), exceptId = null) {
+  return (stations || []).filter(s => s.id !== exceptId).map(s => {
+    const last = latestOf(s.id);
+    return { id: s.id, label: s.label, last: last?.[0], fr: last ? freshness(last[0], nowMs) : null };
+  }).filter(g => g.fr?.key === 'stale').map(g => ({ id: g.id, label: g.label, t: g.last, ageMin: g.fr.ageMin }));
+}
+
 /* ---------- Series utilities ---------- */
 
 // Insert null points so chart lines break across gaps instead of bridging them.
