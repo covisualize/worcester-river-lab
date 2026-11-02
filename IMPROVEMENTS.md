@@ -59,6 +59,24 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-11-02 — daily/2026-11-02-delayed-gauge-pill — Health: site live on desktop+mobile, no console
+  errors; weekly refresh (05:17) and the deploy after it green, 6 of 7 gauges current (25 min); no
+  warnings in force; rivers falling (Bewdley 0.72 m, Diglis 0.66 m). PR #20 still open, so untouched
+  (branched from main). Bransford is again delayed (205 min; also 140 min yesterday): the EA API itself
+  has nothing newer than 04:30 UTC and no gaps before it, so it is the EA feed stopping, not our code.
+  Found on the live site: the header pill said just "Live · 08:01" because it only checks Diglis, so a
+  gauge hours behind was only visible on its own card. Change: the pill now adds "· 1 gauge delayed"
+  (any gauge other than Diglis past the 2 h "Delayed" threshold; Diglis already turns the pill amber
+  and says "reading N h old") and its tooltip names the gauge and its last reading time. New pure
+  helper `delayedGauges()` in data.js. Tests: unit test (stale only; slightly late, fresh, no-data and
+  the excepted primary are left out) and an e2e with a new `delayed` scenario (Bransford's feed stops
+  4 h before "now"); the e2e fails on the old code. Live check against the real EA API showed
+  "Live · 08:01 · 1 gauge delayed" with "Delayed: Bransford, last reading ... 04:30 GMT (3 h 31 min
+  ago)". Note: on phones the pill is icon-only (CSS hides its text), so the extra wording is for
+  desktop and tablet; phones still get the card message and the tooltip. Possible follow-up: tint
+  the phone icon when any gauge is delayed.
+  Codex then found, and I confirmed, that the history can lag a gauge's own metadata reading (histories fail
+  but metadata updates), so `delayedGauges` now uses the newest of the two; unit test fails without it.
 - 2026-11-01 — daily/2026-11-01-flow-in-map-panel — Health: site live on desktop+mobile, no console
   errors; deploy of #19 green and live (serves the map near/elsewhere tooltips); no open PRs. Six
   gauges current (20 min). Bransford is delayed: its last reading is 05:30 and the EA API itself has

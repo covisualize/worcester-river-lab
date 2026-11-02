@@ -3,7 +3,7 @@ import { $, $$, esc, setDemoExport, tokens, reducedMotion, toggleFullscreen, toa
 import { createStore, decode, VIEWS } from './store.js';
 import { createLive } from './live.js';
 import { STATIONS, RANGES } from './config.js';
-import { transform, lttb, fmt, freshness, ukDayStart, ukDateInput, time } from './data.js';
+import { transform, lttb, fmt, freshness, delayedGauges, ukDayStart, ukDateInput, time } from './data.js';
 import { createOverview } from './views/overview.js';
 import { createMapView } from './views/map.js';
 import { createAnalysis } from './views/analysis.js';
@@ -171,10 +171,12 @@ function drawStatus(st) {
   const pill = $('#live-status');
   const last = live.latestOf('2085');
   const fr = freshness(last?.[0]);
+  // Other gauges the EA has not updated for a while (Diglis is reported above on its own).
+  const delayed = st.mode === 'live' ? delayedGauges(live.stations, id => live.latestOf(id), Date.now(), '2085') : [];
   let text, mode = st.mode;
   if (st.refreshing && !st.updatedAt) text = st.metadata ? 'Loading readings…' : 'Connecting to EA…';
   else if (st.offline) { text = 'Offline'; mode = 'error'; }
-  else if (st.mode === 'live') { text = `Live · ${fmt.time(st.updatedAt)}`; if (fr.key === 'stale') { mode = 'stale'; text = `Live · reading ${fmt.age(fr.ageMin)}`; } }
+  else if (st.mode === 'live') { text = `Live · ${fmt.time(st.updatedAt)}`; if (fr.key === 'stale') { mode = 'stale'; text = `Live · reading ${fmt.age(fr.ageMin)}`; } else if (delayed.length) text += ` · ${delayed.length} gauge${delayed.length > 1 ? 's' : ''} delayed`; }
   else if (st.mode === 'stale') text = 'Update failed · cached';
   else if (st.mode === 'snapshot') text = 'Offline snapshot';
   else if (st.mode === 'demo') text = 'Demo replay · not live';
@@ -182,7 +184,7 @@ function drawStatus(st) {
   else text = 'Connecting…';
   pill.dataset.mode = mode;
   pill.querySelector('span').textContent = text;
-  pill.title = [`Status: ${st.mode}`, st.updatedAt && `Last update ${fmt.full(st.updatedAt)}`, last && `Latest Diglis reading ${fmt.full(last[0])}`, st.error && `Note: ${st.error}`, 'Click for data confidence details'].filter(Boolean).join('\n');
+  pill.title = [`Status: ${st.mode}`, st.updatedAt && `Last update ${fmt.full(st.updatedAt)}`, last && `Latest Diglis reading ${fmt.full(last[0])}`, ...delayed.map(g => `Delayed: ${g.label}, last reading ${fmt.full(g.t)} (${fmt.age(g.ageMin)}); the EA has not published a newer one`), st.error && `Note: ${st.error}`, 'Click for data confidence details'].filter(Boolean).join('\n');
   $('#refresh').classList.toggle('spinning', !!st.refreshing);
 }
 
