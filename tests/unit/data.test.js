@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  cleanReadings, parseTime, nearest, change, rateSeries, currentRate, trend, rangePosition, toAOD, freshness, breakGaps, gaps,
+  cleanReadings, parseTime, nearest, change, rateSeries, currentRate, trend, rangePosition, toAOD, freshness, delayedGauges, breakGaps, gaps,
   lttb, transform, notable, topEvents, eventWindow, percentileRank, hourlyRain, totalRain, simulateLinear, hoursToReach,
   fmt, ukDayStart, ukDateInput, toCSV, quantile, explainRate, time,
 } from '../../dist/js/data.js';
@@ -168,4 +168,30 @@ test('real snapshot data produces sensible derived values', () => {
   assert.ok(s.every((p, i) => !i || p[0] > s[i - 1][0]));
   const r = rateSeries(s);
   assert.ok(r.length > 100 && r.every(p => Number.isFinite(p[1]) && Math.abs(p[1]) < 100));
+});
+
+test('delayedGauges: names gauges whose newest reading is past the delayed threshold, and nothing else', () => {
+  const now = Date.parse('2026-11-02T08:00:00Z'), min = 60000;
+  const stations = [{ id: 'a', label: 'Fresh' }, { id: 'b', label: 'Slightly late' }, { id: 'c', label: 'Hours behind' }, { id: 'd', label: 'No data yet' }, { id: 'p', label: 'Primary, behind' }];
+  const last = { a: now - 20 * min, b: now - 90 * min, c: now - 205 * min, p: now - 300 * min };
+  const out = delayedGauges(stations, id => (last[id] != null ? [last[id], 1] : null), now, 'p');
+  assert.deepEqual(out.map(g => g.id), ['c'], 'only a stale gauge; "recent", fresh, no-data and the excepted primary are left out');
+  assert.equal(Math.round(out[0].ageMin), 205);
+  assert.equal(out[0].label, 'Hours behind');
+  assert.deepEqual(delayedGauges(stations, id => (last[id] != null ? [last[id], 1] : null), now, null).map(g => g.id), ['c', 'p'], 'without an exception the primary counts too');
+  assert.deepEqual(delayedGauges(null, () => null, now), []);
+});
+
+test('delayedGauges: uses the newest reading held, so a lagging history does not make a gauge look delayed', () => {
+  const now = Date.parse('2026-11-02T08:00:00Z'), min = 60000;
+  const stations = [
+    { id: 'x', label: 'History old, metadata fresh', latest: [now - 15 * min, 1] },
+    { id: 'y', label: 'History fresh, metadata old', latest: [now - 400 * min, 1] },
+    { id: 'z', label: 'Both old', latest: [now - 300 * min, 1] },
+    { id: 'w', label: 'Metadata only, old', latest: [now - 250 * min, 1] },
+  ];
+  const history = { x: now - 300 * min, y: now - 10 * min, z: now - 280 * min };
+  const out = delayedGauges(stations, id => (history[id] != null ? [history[id], 1] : null), now);
+  assert.deepEqual(out.map(g => g.id), ['z', 'w'], 'x and y have a fresh reading somewhere; z and w really are behind');
+  assert.equal(Math.round(out.find(g => g.id === 'z').ageMin), 280, 'the age is that of the newest reading (history 280 min, metadata 300 min)');
 });
