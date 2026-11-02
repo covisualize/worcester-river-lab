@@ -66,6 +66,8 @@ export function normaliseStation(item, fallback = {}) {
   const level = measures.find(m => /level-stage-i-15_min-mASD$/.test(m.notation || m['@id'] || ''))
     || measures.find(m => m.parameter === 'level');
   const latest = level && typeof level.latestReading === 'object' ? level.latestReading : null;
+  // Some gauges (Bewdley, Saxons Lode) also publish discharge. Keep the EA's own latest figure, unit and time.
+  const flowM = measures.find(m => m.parameter === 'flow' && m.latestReading && typeof m.latestReading === 'object' && num(m.latestReading.value) != null);
   return {
     id: item?.stationReference || item?.notation || fallback.id,
     label: item?.label || fallback.label,
@@ -81,6 +83,7 @@ export function normaliseStation(item, fallback = {}) {
     levelMeasure: level ? String(level.notation || level['@id']).split('/').pop() : null,
     unit: level?.unitName || 'mASD',
     latest: latest && num(latest.value) != null ? [parseTime(latest.dateTime), latest.value] : null,
+    flow: flowM ? { t: parseTime(flowM.latestReading.dateTime), value: flowM.latestReading.value, unit: flowM.unitName || 'm3/s' } : null,
     scale: ss ? {
       low: num(ss.typicalRangeLow), high: num(ss.typicalRangeHigh), scaleMax: num(ss.scaleMax), datum: num(ss.datum),
       highestRecent: ss.highestRecent ? { value: num(ss.highestRecent.value), t: parseTime(ss.highestRecent.dateTime) } : null,

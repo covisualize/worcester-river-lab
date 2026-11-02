@@ -152,7 +152,8 @@ export function createLive({ demo = null } = {}) {
         // Whole quarter-hours, so replayed readings keep the EA's 15-minute grid.
         const shift = Math.floor((Date.now() - d.now) / (15 * time.MIN)) * 15 * time.MIN;
         live.series = Object.fromEntries(Object.entries(d.series).map(([sid, rows]) => [sid, rows.map(([t, v]) => [t + shift, v])]));
-        live.stations = live.stations.map(s => ({ ...s, latest: latest(live.series[s.id] || []) }));
+        // The bundled metadata's flow is from the day it was captured, not from the replayed flood.
+        live.stations = live.stations.map(s => ({ ...s, latest: latest(live.series[s.id] || []), flow: null }));
         live.byId = Object.fromEntries(live.stations.map(s => [s.id, s]));
         const raised = d.now + shift - 6 * time.HOUR;
         live.floods = { fetchedAt: Date.now(), items: DEMO_WARNINGS.map(w => ({ ...w, county: 'Worcestershire', river: 'River Severn', message: 'Demo replay: illustrative warning text. Check GOV.UK for real warnings.', raised, changed: raised, polygon: `${EA_POLYGON}/${w.id}/polygon`, tidal: false, demo: true })) };
