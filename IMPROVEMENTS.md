@@ -80,6 +80,13 @@ Anything broken here takes priority over the backlog.
   themes) and for the no-half-loaded-table case (new `primaryfirst` scenario); each fails without its code.
   Live check against the real EA API on desktop and a phone viewport: six gauges 96 of 96, Bransford 95 of
   96 (one missing reading, not a gap), no overflow, no errors. The "24 h" header uses a non-breaking space.
+  Codex then found two more, both confirmed: (1) a gap was only measured inside the period ending one hour
+  ago, so a gauge that had resumed in the last hour was still called "ongoing"; gaps are now found in the whole
+  series up to now, and the stretch since the newest reading counts (as "ongoing") only past the 60 min
+  "up to date" limit; (2) a gauge whose own history request failed (or came back empty) kept an old series
+  and showed as "0 of 96" with a note blaming the EA; `live.historyLoaded` now records which gauges loaded in
+  the latest refresh and the others show "not fetched this time". Unit tests for both (including the exact
+  Codex scenario) and an e2e `badgauge` scenario; each fails on the previous code.
 - 2026-11-02 — daily/2026-11-02-delayed-gauge-pill — Health: site live on desktop+mobile, no console
   errors; weekly refresh (05:17) and the deploy after it green, 6 of 7 gauges current (25 min); no
   warnings in force; rivers falling (Bewdley 0.72 m, Diglis 0.66 m). PR #20 still open, so untouched

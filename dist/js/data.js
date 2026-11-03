@@ -205,22 +205,21 @@ export function gaps(series, gapMs = RULES.gapMinutes * MIN) {
 
 // How much of a 24 h period a gauge actually delivered, against the EA's 15-minute interval.
 // The period ends RULES.freshMinutes ago, not now: the EA publishes a reading some 20-40 minutes after its
-// timestamp, so the latest hour is not judged here (the status pill and gauge cards cover "latest").
-// A gap is a break longer than RULES.gapMinutes between readings or at either end of the period; "ongoing" means it
-// reaches the end of the period, i.e. nothing came in after it. Descriptive only: it does not say why readings are missing.
+// timestamp, so the latest hour is not judged for the count (the status pill and gauge cards cover "latest").
+// Gaps are found in the whole series up to now, so a gauge that has resumed is not called silent: a break of more than
+// RULES.gapMinutes between readings (or before the first) is a gap, and the stretch since the newest reading counts, and is
+// "ongoing", only once it is longer than RULES.freshMinutes. Descriptive only: it does not say why readings are missing.
 export function completeness(series, nowMs = Date.now(), windowMs = 24 * HOUR, intervalMin = 15) {
   const to = nowMs - RULES.freshMinutes * MIN, from = to - windowMs;
-  const pts = (series || []).filter(p => p[0] > from && p[0] <= to).map(p => p[0]).sort((a, b) => a - b);
+  const all = (series || []).map(p => p[0]).filter(t => t > from && t <= nowMs).sort((a, b) => a - b);
   const expected = Math.floor(windowMs / (intervalMin * MIN));
-  const count = Math.min(pts.length, expected);
-  const edges = [from, ...pts, to];
-  let longest = 0, ongoing = false;
-  for (let i = 1; i < edges.length; i++) {
-    const d = edges[i] - edges[i - 1];
-    if (d > longest) { longest = d; ongoing = i === edges.length - 1; }
-  }
-  const gapMs = longest > RULES.gapMinutes * MIN ? longest : 0;
-  return { count, expected, pct: expected ? Math.round((count / expected) * 100) : null, gapMs, ongoing: gapMs > 0 && ongoing, from, to };
+  const count = Math.min(all.filter(t => t <= to).length, expected);
+  let gapMs = 0, ongoing = false;
+  const edges = [from, ...all];
+  for (let i = 1; i < edges.length; i++) if (edges[i] - edges[i - 1] > RULES.gapMinutes * MIN && edges[i] - edges[i - 1] > gapMs) gapMs = edges[i] - edges[i - 1];
+  const tail = nowMs - edges[edges.length - 1];
+  if (tail > RULES.freshMinutes * MIN && tail >= gapMs) { gapMs = tail; ongoing = true; }
+  return { count, expected, pct: expected ? Math.round((count / expected) * 100) : null, gapMs, ongoing, from, to };
 }
 
 export function stats(series) {

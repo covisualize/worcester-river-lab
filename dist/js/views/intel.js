@@ -79,13 +79,16 @@ export function createIntel(ctx) {
     // Not while the first load is still bringing in the other gauges' histories (status is already 'live' once Diglis has its own).
     if (live.status.mode !== 'live' || live.status.partial || live.status.refreshing) return '';
     const now = Date.now();
+    let unfetched = false;
     const rows = STATIONS.map(c => {
+      // A gauge whose history did not load in the latest refresh may hold an old series (or none): say so rather than count it.
+      if (!live.historyLoaded?.has(c.id)) { unfetched = true; return `<tr data-id="${c.id}"><td>${esc(live.station(c.id)?.label || c.label)}</td><td class="n">—</td><td class="n">not fetched this time</td></tr>`; }
       const q = completeness(live.series[c.id], now);
       const gap = q.gapMs ? `${esc(fmt.duration(q.gapMs / time.MIN))}${q.ongoing ? ' (ongoing)' : ''}` : 'none';
       return `<tr data-id="${c.id}"><td>${esc(live.station(c.id)?.label || c.label)}</td><td class="n">${q.count} of ${q.expected}</td><td class="n">${gap}</td></tr>`;
     }).join('');
     return `<div class="table-wrap" tabindex="0" role="region" aria-label="Readings received per gauge in the last 24 hours"><table class="data-table"><thead><tr><th>Gauge</th><th class="n">Readings, last 24\u00a0h</th><th class="n">Longest gap</th></tr></thead><tbody>${rows}</tbody></table></div>
-      <p class="note" style="margin-top:8px">The EA publishes a level every 15 minutes, so 96 are expected in 24 hours. A gap is a break of more than ${RULES.gapMinutes} minutes between readings; "ongoing" means the gauge has published nothing newer since. Missing readings are the EA's publication, not something this site can fill.</p>`;
+      <p class="note" style="margin-top:8px">The EA publishes a level every 15 minutes, so 96 are expected in 24 hours. A gap is a break of more than ${RULES.gapMinutes} minutes between readings; "ongoing" means the gauge has published nothing newer since. Missing readings are the EA's publication, not something this site can fill.${unfetched ? ' "Not fetched this time" is different: this site\'s own request for that gauge\'s history failed.' : ''}</p>`;
   }
 
   function confidenceHTML() {
