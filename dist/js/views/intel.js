@@ -2,7 +2,7 @@
 // Nothing here is a forecast: every figure is an EA observation or EA metadata.
 import { $, $$, esc } from '../ui.js';
 import { STATIONS, PRIMARY, SEVERITY, GUIDANCE, FLOODLINE, RULES } from '../config.js';
-import { change, currentRate, trend, rangePosition, freshness, fmt, topEvents, parseTime, splitWarnings, warningCount } from '../data.js';
+import { change, currentRate, trend, rangePosition, freshness, completeness, time, fmt, topEvents, parseTime, splitWarnings, warningCount } from '../data.js';
 import { getStatic, netLog } from '../api.js';
 
 export function createIntel(ctx) {
@@ -74,6 +74,20 @@ export function createIntel(ctx) {
       <p class="note" style="margin-top:8px">EA Hydrology archive daily maxima (quality-flagged; retrieved ${esc(fmt.dateYear(parseTime(archive.retrievedAt)))}). Events are the highest days at least 14 days apart. <button type="button" class="link btn-link" data-go-history>Open the historical explorer →</button></p>`;
   }
 
+  // Readings each gauge delivered in the last 24 h. Only when the readings are this refresh's own (not a snapshot, demo or partial load).
+  function completenessHTML() {
+    // Not while the first load is still bringing in the other gauges' histories (status is already 'live' once Diglis has its own).
+    if (live.status.mode !== 'live' || live.status.partial || live.status.refreshing) return '';
+    const now = Date.now();
+    const rows = STATIONS.map(c => {
+      const q = completeness(live.series[c.id], now);
+      const gap = q.gapMs ? `${esc(fmt.duration(q.gapMs / time.MIN))}${q.ongoing ? ' (ongoing)' : ''}` : 'none';
+      return `<tr data-id="${c.id}"><td>${esc(live.station(c.id)?.label || c.label)}</td><td class="n">${q.count} of ${q.expected}</td><td class="n">${gap}</td></tr>`;
+    }).join('');
+    return `<div class="table-wrap" tabindex="0" role="region" aria-label="Readings received per gauge in the last 24 hours"><table class="data-table"><thead><tr><th>Gauge</th><th class="n">Readings, last 24\u00a0h</th><th class="n">Longest gap</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <p class="note" style="margin-top:8px">The EA publishes a level every 15 minutes, so 96 are expected in 24 hours. A gap is a break of more than ${RULES.gapMinutes} minutes between readings; "ongoing" means the gauge has published nothing newer since. Missing readings are the EA's publication, not something this site can fill.</p>`;
+  }
+
   function confidenceHTML() {
     const s = live.status;
     const last = live.latestOf(PRIMARY);
@@ -88,6 +102,7 @@ export function createIntel(ctx) {
       ${row(archive ? 'good' : 'fair', 'Historical archive', esc(archive ? `Snapshot ${fmt.dateYear(parseTime(archive.retrievedAt))}; recent days may be unchecked` : 'not loaded'))}
       ${row(netLog.failures ? 'fair' : 'good', 'Requests', `${netLog.requests} made · ${netLog.failures} failed`)}
     </div>
+    ${completenessHTML()}
     <p class="note" style="margin-top:8px">Real-time readings are provisional and may be revised; the EA labels this service Beta. “Up to date” means newer than ${RULES.freshMinutes} min; “Delayed” means older than ${RULES.staleMinutes} min (app conventions).</p>`;
   }
 

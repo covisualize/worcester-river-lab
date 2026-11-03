@@ -203,6 +203,26 @@ export function gaps(series, gapMs = RULES.gapMinutes * MIN) {
   return out;
 }
 
+// How much of a 24 h period a gauge actually delivered, against the EA's 15-minute interval.
+// The period ends RULES.freshMinutes ago, not now: the EA publishes a reading some 20-40 minutes after its
+// timestamp, so the latest hour is not judged here (the status pill and gauge cards cover "latest").
+// A gap is a break longer than RULES.gapMinutes between readings or at either end of the period; "ongoing" means it
+// reaches the end of the period, i.e. nothing came in after it. Descriptive only: it does not say why readings are missing.
+export function completeness(series, nowMs = Date.now(), windowMs = 24 * HOUR, intervalMin = 15) {
+  const to = nowMs - RULES.freshMinutes * MIN, from = to - windowMs;
+  const pts = (series || []).filter(p => p[0] > from && p[0] <= to).map(p => p[0]).sort((a, b) => a - b);
+  const expected = Math.floor(windowMs / (intervalMin * MIN));
+  const count = Math.min(pts.length, expected);
+  const edges = [from, ...pts, to];
+  let longest = 0, ongoing = false;
+  for (let i = 1; i < edges.length; i++) {
+    const d = edges[i] - edges[i - 1];
+    if (d > longest) { longest = d; ongoing = i === edges.length - 1; }
+  }
+  const gapMs = longest > RULES.gapMinutes * MIN ? longest : 0;
+  return { count, expected, pct: expected ? Math.round((count / expected) * 100) : null, gapMs, ongoing: gapMs > 0 && ongoing, from, to };
+}
+
 export function stats(series) {
   if (!series.length) return null;
   let min = series[0], max = series[0], sum = 0;
@@ -390,6 +410,14 @@ export const fmt = {
   dateTime: t => formatter({ day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(t),
   full: t => formatter({ weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).format(t),
   zone: t => formatter({ timeZoneName: 'short' }).formatToParts(t).find(p => p.type === 'timeZoneName')?.value || 'UK',
+  // A length of time ("35 min", "3 h 31 min"), as opposed to age(), which says "ago".
+  duration(min) {
+    if (min == null || !Number.isFinite(min)) return '—';
+    const total = Math.round(min);
+    if (total < 60) return `${Math.max(1, total)} min`;
+    const h = Math.floor(total / 60), m = total % 60;
+    return m ? `${h} h ${m} min` : `${h} h`;
+  },
   age(min) {
     if (min == null || !Number.isFinite(min)) return '—';
     if (min < 1) return 'just now';

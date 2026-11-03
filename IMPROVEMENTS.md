@@ -52,13 +52,34 @@ Anything broken here takes priority over the backlog.
 - [ ] Offline/PWA: cache the shell and last readings so the page opens without signal,
       clearly marked as cached.
 - [ ] Shareable PNG/CSV of any chart view; print stylesheet for a one-page report.
-- [ ] Data-quality panel: per-station completeness for the selected window.
+- [x] Data-quality panel, step 1: per-gauge completeness for the last 24 h in the Flood info drawer's "Data
+      confidence" section (readings received of 96, longest gap), see 2026-11-03.
+- [ ] Data-quality panel, step 2: completeness for the window chosen in Explore, and for the Hydrology archive.
 - [x] Unit tests for `api.js` normalisation and the `live.js` state machine (see 2026-10-29).
 - [x] Phone nit: keep "24 h" together in the station-card change line (non-breaking space; done in PR #17, 2026-10-30).
 - [ ] Optional custom domain once the owner buys one (see README).
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-11-03 — daily/2026-11-03-data-completeness — Health: site live on desktop+mobile, no console
+  errors; all 7 gauges current (20 min; Bransford 65 min, back under the 2 h flag); no warnings in force;
+  rivers falling (Bewdley 0.62 m, Diglis 0.63 m); #20 and #21 are deployed and live (checked the served
+  map.js and data.js), the last deploy and the weekly refresh are green, no open PRs. Change: the drawer's
+  "Data confidence" section said only "Gauges reporting 7 of 7", which hides what Bransford has done on
+  1-2 Nov (hours without a reading). It now has a per-gauge table: readings received in the last 24 h
+  against the 96 the EA's 15-minute interval gives, and the longest gap (more than 30 min between readings;
+  "ongoing" when nothing came in after it). New pure helper `completeness()` and `fmt.duration()` in
+  data.js. Design points found while testing: (1) EA readings appear 20-40 min after their timestamp, so
+  judging up to "now" flagged every healthy gauge as "94 of 96 / 31 min (ongoing)"; the period therefore
+  ends one hour ago (the "up to date" threshold), which the 25 h of history covers exactly. (2) On first
+  load the status is already "live" once Diglis has its history while the other six are still loading, so a
+  naive table showed six gauges as "0 of 96"; caught by the live check, and the table now waits for the
+  refresh to finish. Tests: unit tests for `completeness` (healthy, normal delay, stopped feed, hole in the
+  middle, outside-window/empty, 30 vs 45 min breaks) and `fmt.duration`; e2e for the table (healthy gauges 96
+  of 96, Bransford's stopped feed 84 of 96 with an ongoing 3 h gap, axe audit of the open section in both
+  themes) and for the no-half-loaded-table case (new `primaryfirst` scenario); each fails without its code.
+  Live check against the real EA API on desktop and a phone viewport: six gauges 96 of 96, Bransford 95 of
+  96 (one missing reading, not a gap), no overflow, no errors. The "24 h" header uses a non-breaking space.
 - 2026-11-02 — daily/2026-11-02-delayed-gauge-pill — Health: site live on desktop+mobile, no console
   errors; weekly refresh (05:17) and the deploy after it green, 6 of 7 gauges current (25 min); no
   warnings in force; rivers falling (Bewdley 0.72 m, Diglis 0.66 m). PR #20 still open, so untouched
