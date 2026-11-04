@@ -83,9 +83,11 @@ function eaResponse(url, { withAlert, scenario }) {
   return null;
 }
 
-async function open(browser, { path = '/', viewport, device, offline = false, withAlert = true, scenario = null } = {}) {
+async function open(browser, { path = '/', viewport, device, offline = false, withAlert = true, scenario = null, watchShifts = false } = {}) {
   const context = await browser.newContext(device ? { ...devices[device] } : { viewport: viewport || { width: 1400, height: 950 } });
   const page = await context.newPage();
+  // Sum of the page's layout shifts (CLS) since it started loading, in window.__shift.
+  if (watchShifts) await page.addInitScript(() => { window.__shift = 0; new PerformanceObserver(l => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__shift += e.value; }).observe({ type: 'layout-shift', buffered: true }); });
   await page.clock.setFixedTime(NOW);
   const errors = [];
   const requested = [];
@@ -105,6 +107,8 @@ async function open(browser, { path = '/', viewport, device, offline = false, wi
       try { return route.fulfill({ body: await readFile(join(root, p)), contentType: types[extname(p)] || 'application/octet-stream' }); } catch { return route.fulfill({ status: 404 }); }
     }
     if (offline) return route.abort('internetdisconnected');
+    // 'late': every EA answer takes 1.5 s, so the page paints its placeholders first and the data arrives afterwards.
+    if (scenario === 'late') await new Promise(r => setTimeout(r, 1500));
     // EA reading history: 'slow' answers after 8 s, 'noreadings' fails fast. Gauge metadata and warnings are untouched.
     if (/\/readings$/.test(new URL(url).pathname)) {
       if (scenario === 'noreadings') return route.abort('failed');
@@ -404,6 +408,20 @@ try {
     assert.deepEqual(await axeViolations(far.page), [], 'the open drawer is accessible (dark)');
   });
   await far.context.close();
+
+  /* ---------- The Overview does not jump around while the first data arrives ---------- */
+  // The placeholders are painted first and every EA answer arrives 1.5 s later, as on a real connection.
+  for (const [name, opts, limit] of [['phone', { device: 'iPhone 13' }, 0.1], ['desktop', {}, 0.05]]) {
+    const sh = await open(browser, { ...opts, scenario: 'late', watchShifts: true });
+    await step(`overview on a ${name}: layout shift while the data arrives stays under ${limit}${limit === 0.1 ? ' (Google\'s "good" limit)' : ''}`, async () => {
+      await waitLive(sh.page);
+      await sh.page.waitForTimeout(2500);
+      const cls = await sh.page.evaluate(() => window.__shift);
+      console.log(`    (${name} CLS ${cls.toFixed(3)})`);
+      assert.ok(cls < limit, `layout shift ${cls.toFixed(3)}`);
+    });
+    await sh.context.close();
+  }
 
   /* ---------- A gauge the EA has not updated for hours is named in the status pill ---------- */
   const lag = await open(browser, { scenario: 'delayed' });
