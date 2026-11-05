@@ -363,7 +363,8 @@
 
 <div id="toasts" class="toasts" aria-live="polite"></div>
 
-<script src="vendor/echarts.slim.min.js" defer></script>
+<!-- ECharts (218 KB gzip, ~1.5 s to run on a mid-range phone) is not run at startup: it is fetched early at low priority and executed by loadECharts() when a chart is about to be drawn. -->
+<link rel="preload" as="script" href="vendor/echarts.slim.min.js" fetchpriority="low">
 <script type="module" src="js/main.js"></script>
 </body>
 </html>

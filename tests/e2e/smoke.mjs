@@ -89,7 +89,7 @@ async function open(browser, { path = '/', viewport, device, offline = false, wi
   await page.clock.setFixedTime(NOW);
   const errors = [];
   const requested = [];
-  let leafletHits = 0, leafletCssHits = 0;
+  let leafletHits = 0, leafletCssHits = 0, echartsHits = 0;
   page.on('request', r => requested.push(new URL(r.url()).pathname));
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', msg => { if (msg.type() === 'error' && !/Failed to load resource/.test(msg.text())) errors.push(msg.text()); });
@@ -100,6 +100,8 @@ async function open(browser, { path = '/', viewport, device, offline = false, wi
       if (p.endsWith('/')) p += 'index.html';
       // 'noleaflet': the map library fails on its first two requests only, so "Try again" can succeed.
       if (scenario === 'noleaflet' && p.endsWith('/vendor/leaflet/leaflet.js') && leafletHits++ < 2) return route.abort('failed');
+      // 'noecharts': the charting library fails on its first two requests only (the early preload counts as one), so a retry can succeed.
+      if (scenario === 'noecharts' && p.endsWith('/vendor/echarts.slim.min.js') && echartsHits++ < 2) return route.abort('failed');
       // 'nocss': the script loads but the stylesheet fails once; a retry must fetch the stylesheet again.
       if (scenario === 'nocss' && p.endsWith('/vendor/leaflet/leaflet.css') && leafletCssHits++ < 1) return route.abort('failed');
       try { return route.fulfill({ body: await readFile(join(root, p)), contentType: types[extname(p)] || 'application/octet-stream' }); } catch { return route.fulfill({ status: 404 }); }
@@ -323,6 +325,57 @@ try {
     assert.deepEqual(nc.errors, []);
   });
   await nc.context.close();
+
+  /* ---------- The charting library is not run at startup ---------- */
+  const ph = await open(browser, { device: 'iPhone 13' });
+  await step('phone: ECharts is fetched early but not run at startup, and runs once when the timeline nears the screen', async () => {
+    await waitLive(ph.page);
+    await ph.page.waitForTimeout(1500);
+    assert.equal(await ph.page.evaluate(() => typeof window.echarts), 'undefined', 'not evaluated while the timeline is far below the fold');
+    assert.equal(await ph.page.locator('#tl-chart canvas').count(), 0);
+    assert.ok(ph.requested.some(p => p.endsWith('/vendor/echarts.slim.min.js')), 'but the file is fetched early (preload), so scrolling does not wait on the network');
+    assert.notEqual(await ph.page.textContent('#ov-level'), '—', 'the hero does not wait for charts');
+    await ph.page.locator('#ov-timeline').scrollIntoViewIfNeeded();
+    await ph.page.waitForSelector('#tl-chart canvas', { timeout: 10000 });
+    assert.equal(await ph.page.evaluate(() => typeof window.echarts), 'object');
+    assert.equal(ph.requested.filter(p => p.endsWith('/vendor/echarts.slim.min.js')).length, 1, 'fetched once, not again when it runs');
+    assert.deepEqual(ph.errors, []);
+  });
+  await ph.context.close();
+  const ne = await open(browser, { scenario: 'noecharts' });
+  await step('a failed charting library leaves the hero and KPIs working, and the timeline offers a retry', async () => {
+    await waitLive(ne.page);
+    await ne.page.waitForSelector('#ov-timeline .state-error', { timeout: 10000 });
+    assert.match(await ne.page.textContent('#ov-timeline .state-error'), /charting library could not be loaded/);
+    assert.notEqual(await ne.page.textContent('#ov-level'), '—');
+    assert.equal(await ne.page.locator('.kpi').count(), 6);
+    for (let i = 0; i < 3 && !(await ne.page.locator('#tl-chart canvas').count()); i++) {
+      await ne.page.click('#ov-timeline .state-error button');
+      await ne.page.waitForTimeout(800);
+    }
+    await ne.page.waitForSelector('#tl-chart canvas', { timeout: 10000 });
+    assert.equal(await ne.page.locator('#ov-timeline .state-error').count(), 0, 'the error is cleared once it loads');
+  });
+  await ne.context.close();
+  const dh = await open(browser, { path: '/?view=history' });
+  await step('a direct link to a chart view waits for the library and then draws', async () => {
+    await dh.page.waitForSelector('#hi-chart canvas', { timeout: 15000 });
+    assert.equal(await dh.page.locator('#view-history .lib-error').count(), 0);
+    assert.deepEqual(dh.errors, []);
+  });
+  await dh.context.close();
+  const na = await open(browser, { path: '/?view=analysis', scenario: 'noecharts' });
+  await step('a chart view shows "Charts unavailable" with a working retry when the library fails', async () => {
+    await na.page.waitForSelector('#view-analysis .lib-error', { timeout: 10000 });
+    assert.match(await na.page.textContent('#view-analysis .lib-error'), /Charts unavailable\..*could not be loaded/);
+    for (let i = 0; i < 3 && !(await na.page.locator('#an-multi-chart canvas').count()); i++) {
+      if (await na.page.locator('#view-analysis .lib-error button').count()) await na.page.click('#view-analysis .lib-error button');
+      await na.page.waitForTimeout(800);
+    }
+    await na.page.waitForSelector('#an-multi-chart canvas', { timeout: 10000 });
+    assert.equal(await na.page.locator('#view-analysis .lib-error').count(), 0);
+  });
+  await na.context.close();
   const dm = await open(browser, { path: '/?view=map' });
   await step('a direct link to the map loads straight into it', async () => {
     await dm.page.waitForFunction(() => document.querySelectorAll('.gauge-marker').length === 7, null, { timeout: 15000 });

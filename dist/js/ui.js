@@ -38,7 +38,20 @@ export function stationColor(T, index) {
 const charts = new Set();
 let resizeObserver;
 
-// Mount an ECharts instance; returns a handle with `set(option)`.
+// ECharts is a separate script that is only executed when a chart is about to be drawn (it is the largest piece of startup work
+// on a phone). Resolves at once if it is already there; a failed load can be retried by calling again.
+let echartsLoad = null;
+export function loadECharts() {
+  if (window.echarts) return Promise.resolve();
+  return (echartsLoad ??= new Promise((resolve, reject) => {
+    const el = Object.assign(document.createElement('script'), { src: 'vendor/echarts.slim.min.js' });
+    el.onload = resolve;
+    el.onerror = () => { echartsLoad = null; reject(new Error('The charting library could not be loaded')); };
+    document.head.append(el);
+  }));
+}
+
+// Mount an ECharts instance (call loadECharts() first); returns a handle with `set(option)`.
 export function mountChart(el, { onReady } = {}) {
   if (!window.echarts) {
     el.innerHTML = '<p class="empty">The charting library failed to load. Please refresh the page.</p>';

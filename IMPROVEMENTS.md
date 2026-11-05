@@ -31,8 +31,13 @@ Anything broken here takes priority over the backlog.
       `npm run vendor` from scripts/echarts-entry.mjs): 339 → 218 KB gzip, 1034 → 643 KB to parse.
 - [x] Performance, step 2: Leaflet (+ its stylesheet, 45,890 bytes gzip) loads on first Map/Explore
       use.
-- [ ] Performance, next: Lighthouse on a real phone; consider deferring the ECharts bundle (218 KB
-      gzip) the same way for views that draw no chart on first paint (it is needed on Overview).
+- [x] Performance, step 3: ECharts (218 KB gzip) is fetched early at low priority but only run when a chart is
+      about to be drawn (the Overview timeline when its panel nears the screen; Analysis, Explore and History
+      before they mount); see 2026-11-05.
+- [ ] Performance, next: a Lighthouse run on a real phone (all Lighthouse numbers so far are its emulated mobile:
+      Moto G Power, 4x CPU slowdown, slow 4G). Remaining findings on 5 Nov: LCP about 3 s live (6 s on an
+      uncompressed local server), 25 KiB unused JavaScript, main-thread style/layout work. GitHub Pages sets the
+      cache lifetime, so "efficient cache lifetimes" cannot be fixed here.
 - [x] Warnings near Worcester (EA flood areas within 12 km) vs elsewhere in the 40 km search:
       only local ones colour the Overview verdict.
 - [x] Flood info drawer and header badge: warnings tagged "near Worcester" or "elsewhere".
@@ -59,6 +64,28 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-11-05 — daily/2026-11-05-defer-echarts — Health: site live on desktop+mobile, no console errors; all 7
+  gauges current (21 min; Bransford 36 min, back under the 2 h flag); no warnings in force; last deploy green,
+  weekly refresh runs Monday; open PRs #22 and #23 untouched (branched from main). Change: Lighthouse
+  (4 Nov) put ECharts first in its JavaScript execution list (about 1.5 s of script evaluation under the 4x CPU
+  slowdown, in a 2.3 s total) with 101 KiB of it unused on first paint. It was a `defer` script, so it
+  ran before the page was interactive, though the first thing a visitor needs (hero, KPIs, stations) uses no
+  chart. Now `index.html` only preloads it (low priority, no execution) and `loadECharts()` in ui.js runs it
+  on demand: the Overview watches its timeline panel (only after the first data render, because before that
+  the panel sits high on the screen) and loads it 300 px before it scrolls into view, so on a phone it is not
+  run at all until the visitor scrolls, and on desktop it runs at once; Analysis, Explore and History load
+  it before they mount (navigation links start the load on hover/focus, as for Leaflet). Failures are handled
+  like Leaflet's: "Charts unavailable" with a retry on the three views, and a retry under the Overview
+  timeline while the hero and KPIs keep working. Same Lighthouse mobile run, old vs new build served locally
+  with live EA data, 3 runs each: total blocking time 520-1,240 ms → 20-80 ms; start-up JavaScript 1.8-2.5 s →
+  0.3-0.5 s; time to interactive 7.6-8.4 s → 5.9 s; unused JavaScript 301 → 25 KiB; performance score 29-41 →
+  55. With the layout-shift fix of PR #23 applied as well (not merged yet): CLS 0.015-0.019, TBT 10-60 ms,
+  score 77-78. Tests: e2e that ECharts is fetched but not run on a phone until the timeline nears (and is
+  fetched only once), that a failed library leaves hero and KPIs working with a retry on the timeline and on
+  the Analysis view, and that a direct link to a chart view still draws; the first three fail on the old code
+  (the direct-link one is a regression guard). Found while testing: starting to watch the timeline at mount
+  made it "near" before the data arrived (placeholder layout), so ECharts loaded at once on a phone; and the
+  timeline's own refresh would have cleared the library error, so that error carries its own class.
 - 2026-11-02 — daily/2026-11-02-delayed-gauge-pill — Health: site live on desktop+mobile, no console
   errors; weekly refresh (05:17) and the deploy after it green, 6 of 7 gauges current (25 min); no
   warnings in force; rivers falling (Bewdley 0.72 m, Diglis 0.66 m). PR #20 still open, so untouched

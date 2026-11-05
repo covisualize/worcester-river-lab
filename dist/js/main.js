@@ -1,5 +1,5 @@
 // Application bootstrap: state, routing, shared helpers and status UI.
-import { $, $$, esc, setDemoExport, tokens, reducedMotion, toggleFullscreen, toast, resizeAll, errorBox } from './ui.js';
+import { $, $$, esc, setDemoExport, tokens, reducedMotion, toggleFullscreen, toast, resizeAll, errorBox, loadECharts } from './ui.js';
 import { createStore, decode, VIEWS } from './store.js';
 import { createLive } from './live.js';
 import { STATIONS, RANGES } from './config.js';
@@ -99,6 +99,8 @@ let pendingSection = null;
 // Leaflet (~48 KB gzip with its stylesheet) is only used by Map and Explore, so it loads on first
 // use instead of with every page. Links to those views start the download on hover or focus.
 const NEEDS_LEAFLET = new Set(['map', 'explore']);
+// These views create their charts as they mount, so they wait for ECharts (the Overview draws its timeline later, when it scrolls near).
+const NEEDS_ECHARTS = new Set(['analysis', 'explore', 'history']);
 // The script and the stylesheet are tracked separately, so a retry fetches only the one that
 // failed (a map with its script but without Leaflet's CSS would mount broken).
 const leafletParts = { js: null, css: null };
@@ -120,6 +122,9 @@ const loadLeaflet = () => Promise.all([loadLeafletPart('css'), loadLeafletPart('
 $$('[data-nav="map"], [data-nav="explore"], [data-go="map"], [data-go="explore"]').forEach(el => {
   for (const ev of ['pointerenter', 'focus']) el.addEventListener(ev, () => loadLeaflet().catch(() => {}), { once: true });
 });
+$$('[data-nav="analysis"], [data-nav="explore"], [data-nav="history"], [data-go="analysis"], [data-go="explore"], [data-go="history"]').forEach(el => {
+  for (const ev of ['pointerenter', 'focus']) el.addEventListener(ev, () => loadECharts().catch(() => {}), { once: true });
+});
 
 function refreshView(v) {
   if (!mounted.has(v)) return; // e.g. Map while its library is still loading
@@ -134,12 +139,12 @@ async function show(view) {
   $$('[data-nav]').forEach(b => (b.dataset.nav === view ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current')));
   document.title = `${{ overview: 'Live overview', map: 'River map', analysis: 'Analysis', explore: 'Explore', history: 'History' }[view]} · Worcester River`;
   const v = views[view];
-  if (NEEDS_LEAFLET.has(view) && !mounted.has(view)) {
+  if ((NEEDS_LEAFLET.has(view) || NEEDS_ECHARTS.has(view)) && !mounted.has(view)) {
     $(`#view-${view} .lib-error`)?.remove();
-    try { await loadLeaflet(); } catch (e) {
+    try { await Promise.all([NEEDS_LEAFLET.has(view) && loadLeaflet(), NEEDS_ECHARTS.has(view) && loadECharts()]); } catch (e) {
       const box = errorBox(e.message, () => show(view));
       box.classList.add('lib-error');
-      box.querySelector('strong').textContent = 'Map unavailable.';
+      box.querySelector('strong').textContent = /chart/i.test(e.message) ? 'Charts unavailable.' : 'Map unavailable.';
       $(`#view-${view}`).prepend(box);
       return;
     }
