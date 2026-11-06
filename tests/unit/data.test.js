@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  cleanReadings, parseTime, nearest, change, rateSeries, currentRate, trend, rangePosition, toAOD, freshness, delayedGauges, breakGaps, gaps,
+  cleanReadings, parseTime, nearest, change, rateSeries, currentRate, trend, rangePosition, toAOD, freshness, delayedGauges, completeness, breakGaps, gaps,
   lttb, transform, notable, topEvents, eventWindow, percentileRank, hourlyRain, totalRain, simulateLinear, hoursToReach,
   fmt, ukDayStart, ukDateInput, toCSV, quantile, explainRate, time,
 } from '../../dist/js/data.js';
@@ -194,4 +194,43 @@ test('delayedGauges: uses the newest reading held, so a lagging history does not
   const out = delayedGauges(stations, id => (history[id] != null ? [history[id], 1] : null), now);
   assert.deepEqual(out.map(g => g.id), ['z', 'w'], 'x and y have a fresh reading somewhere; z and w really are behind');
   assert.equal(Math.round(out.find(g => g.id === 'z').ageMin), 280, 'the age is that of the newest reading (history 280 min, metadata 300 min)');
+});
+
+test('completeness: counts the 24 h ending one hour ago against the 15-minute grid; gaps come from the whole series', () => {
+  const now = Date.parse('2026-11-02T12:00:00Z'), min = 60000;
+  // The counted period is (now - 25 h, now - 1 h]. Grid helper: readings every 15 min from `fromMinAgo` down to `toMinAgo` (minutes before now).
+  const grid = (fromMinAgo, toMinAgo) => { const a = []; for (let m = fromMinAgo; m >= toMinAgo; m -= 15) a.push([now - m * min, 1]); return a; };
+  const healthy = completeness(grid(25 * 60 - 15, 0), now);
+  assert.deepEqual([healthy.count, healthy.expected, healthy.pct, healthy.gapMs, healthy.ongoing], [96, 96, 100, 0, false]);
+  // A normal publishing delay (latest reading 40 min old) is not a gap.
+  const delayed = completeness(grid(25 * 60 - 15, 40), now);
+  assert.deepEqual([delayed.count, delayed.gapMs, delayed.ongoing], [96, 0, false]);
+  // The feed stops 4 h before now: 12 of the period's 96 are missing, and the silence since the newest reading is an ongoing 4 h gap.
+  const stopped = completeness(grid(25 * 60 - 15, 240), now);
+  assert.equal(stopped.count, 96 - 12);
+  assert.equal(stopped.gapMs, 240 * min);
+  assert.equal(stopped.ongoing, true);
+  // It stopped 3 h ago and has resumed: readings 45, 30 and 15 min ago fall after the counted period, but the gap is over.
+  const resumed = completeness([...grid(25 * 60 - 15, 180), [now - 45 * min, 1], [now - 30 * min, 1], [now - 15 * min, 1]], now);
+  assert.equal(resumed.count, 88, 'only readings up to one hour ago are counted');
+  assert.equal(resumed.gapMs, 135 * min, 'from 180 to 45 min ago, measured to the first reading back');
+  assert.equal(resumed.ongoing, false, 'newer readings exist, so it is not ongoing');
+  // A hole in the middle is a gap that is not ongoing.
+  const holed = completeness([...grid(25 * 60 - 15, 600), ...grid(300, 0)], now);
+  assert.equal(holed.gapMs, 300 * min, 'between the reading 600 min ago and the one 300 min ago');
+  assert.equal(holed.ongoing, false);
+  assert.equal(holed.count, 60 + 17, '60 readings before the hole (1485..600 min ago) and 17 after it inside the counted period (300..60 min ago)');
+  // Readings outside the period, a missing series and an empty one are handled.
+  assert.equal(completeness([[now - 30 * 3600e3, 1], [now - 30 * min, 1], [now + 3600e3, 1]], now).count, 0);
+  assert.equal(completeness(undefined, now).count, 0);
+  const none = completeness([], now);
+  assert.deepEqual([none.count, none.gapMs, none.ongoing], [0, 25 * 60 * min, true], 'no reading at all in 25 h is one ongoing gap');
+  // Breaks of 30 minutes or less are normal jitter; longer ones are reported.
+  assert.equal(completeness([...grid(25 * 60 - 15, 600), ...grid(570, 0)], now).gapMs, 0, 'a 30 min break is not a gap');
+  assert.equal(completeness([...grid(25 * 60 - 15, 600), ...grid(555, 0)], now).gapMs, 45 * min, 'a 45 min break is');
+});
+
+test('fmt.duration: a length of time, never "ago"', () => {
+  assert.deepEqual([0.2, 35, 59.6, 60, 211, 180, 125.5].map(m => fmt.duration(m)), ['1 min', '35 min', '1 h', '1 h', '3 h 31 min', '3 h', '2 h 6 min']);
+  assert.equal(fmt.duration(null), '—');
 });

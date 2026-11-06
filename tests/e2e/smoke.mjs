@@ -108,7 +108,11 @@ async function open(browser, { path = '/', viewport, device, offline = false, wi
     // EA reading history: 'slow' answers after 8 s, 'noreadings' fails fast. Gauge metadata and warnings are untouched.
     if (/\/readings$/.test(new URL(url).pathname)) {
       if (scenario === 'noreadings') return route.abort('failed');
+      // 'badgauge': only Bransford's history request fails; the other six answer normally.
+      if (scenario === 'badgauge' && /\/measures\/2086-/.test(url)) return route.abort('failed');
       if (scenario === 'slow' || scenario === 'slowstations' || scenario === 'remoteslow') await new Promise(r => setTimeout(r, 8000));
+      // 'primaryfirst': Diglis's history arrives at once, every other gauge's 6 s later.
+      if (scenario === 'primaryfirst' && !/\/measures\/2085-/.test(url)) await new Promise(r => setTimeout(r, 6000));
     }
     // 'slowstations': every gauge except Diglis (2085) answers its metadata 8 s late.
     if (scenario === 'slowstations' && /\/id\/stations\/\w+\.json$/.test(new URL(url).pathname) && !url.includes('/2085.json')) await new Promise(r => setTimeout(r, 8000));
@@ -443,7 +447,49 @@ try {
     assert.match(await lag.page.getAttribute('#live-status', 'title'), /Delayed: Bransford, last reading .*; the EA has not published a newer one/);
     assert.equal(await lag.page.getAttribute('#live-status', 'data-mode'), 'live', 'Diglis itself is current, so the pill is not in its warning state');
   });
+  await step('data confidence: the drawer lists readings received per gauge, and flags a feed that has gone quiet', async () => {
+    await lag.page.click('#live-status');
+    await lag.page.waitForSelector('#intel.open [data-sec="confidence"] tbody tr');
+    const rows = await lag.page.$$eval('#intel [data-sec="confidence"] tbody tr', trs => Object.fromEntries(trs.map(tr => [tr.dataset.id, [...tr.cells].map(c => c.textContent.trim())])));
+    assert.deepEqual(rows['2085'], ['Diglis', '96 of 96', 'none'], 'a healthy gauge: everything in the period arrived, and a normal publishing delay is not a gap');
+    assert.equal(rows['2001'][1], '96 of 96');
+    assert.equal(rows['2086'][0], 'Bransford');
+    assert.equal(rows['2086'][1], '84 of 96', 'the feed stopped 4 h before now, so 12 readings of the period are missing');
+    assert.match(rows['2086'][2], /^4 h( \d+ min)? \(ongoing\)$/, 'about 4 h of silence since the newest reading, measured to now');
+    assert.match(await lag.page.textContent('#intel [data-sec="confidence"]'), /A gap is a break of more than 30 minutes/);
+    await lag.page.waitForFunction(() => !document.querySelector('.toast'), null, { timeout: 6000 }).catch(() => {});
+    await lag.page.waitForTimeout(600);
+    assert.deepEqual(await axeViolations(lag.page), [], 'the open confidence table is accessible (light)');
+    await lag.page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+    await lag.page.waitForTimeout(400);
+    assert.deepEqual(await axeViolations(lag.page), [], 'the open confidence table is accessible (dark)');
+  });
   await lag.context.close();
+  const pf = await open(browser, { scenario: 'primaryfirst' });
+  await step('data confidence: no half-loaded table while the other gauges\' histories are still arriving', async () => {
+    await pf.page.waitForFunction(() => window.__wr?.live.status.mode === 'live' && window.__wr.live.status.refreshing && window.__wr.live.series['2085']?.length, null, { timeout: 15000 });
+    assert.equal(await pf.page.evaluate(() => Object.keys(window.__wr.live.series).length), 1, 'only Diglis has its history so far');
+    await pf.page.click('#live-status');
+    await pf.page.waitForSelector('#intel.open [data-sec="confidence"] summary');
+    assert.equal(await pf.page.locator('#intel [data-sec="confidence"] tbody tr').count(), 0, 'no "0 of 96" rows for gauges that simply have not loaded');
+    await pf.page.waitForFunction(() => window.__wr.live.status.refreshing === false, null, { timeout: 30000 });
+    await pf.page.waitForSelector('#intel [data-sec="confidence"] tbody tr');
+    assert.equal(await pf.page.locator('#intel [data-sec="confidence"] tbody tr').count(), 7, 'the table appears once everything has loaded');
+    assert.equal(await pf.page.textContent('#intel [data-sec="confidence"] tr[data-id="2001"] td:nth-child(2)'), '96 of 96');
+  });
+  await pf.context.close();
+  const bad = await open(browser, { scenario: 'badgauge' });
+  await step('data confidence: a gauge whose history failed to load is not counted as missing readings', async () => {
+    await waitLive(bad.page);
+    await bad.page.waitForFunction(() => window.__wr.live.status.refreshing === false && window.__wr.live.historyLoaded, null, { timeout: 15000 });
+    await bad.page.click('#live-status');
+    await bad.page.waitForSelector('#intel [data-sec="confidence"] tbody tr');
+    const rows = await bad.page.$$eval('#intel [data-sec="confidence"] tbody tr', trs => Object.fromEntries(trs.map(tr => [tr.dataset.id, [...tr.cells].map(c => c.textContent.trim())])));
+    assert.deepEqual(rows['2086'], ['Bransford', '—', 'not fetched this time'], 'no "0 of 96 / 25 h (ongoing)" for a request this site failed to make');
+    assert.equal(rows['2085'][1], '96 of 96');
+    assert.match(await bad.page.textContent('#intel [data-sec="confidence"]'), /"Not fetched this time" is different: this site's own request/);
+  });
+  await bad.context.close();
   await step('status pill: all gauges current means no extra words', async () => {
     assert.match(await page.textContent('#live-status'), /^Live · \d\d:\d\d$/);
   });
