@@ -32,10 +32,13 @@ Anything broken here takes priority over the backlog.
 - [x] Performance, step 2: Leaflet (+ its stylesheet, 45,890 bytes gzip) loads on first Map/Explore
       use.
 - [x] Performance, step 3: no layout jump while the first data arrives (CLS 0.6 → ~0.02 in Lighthouse mobile; see 2026-11-04).
-- [ ] Performance, next: a Lighthouse run on a real phone (the 2026-11-04 numbers are Lighthouse's emulated mobile: Moto G Power,
-      4x CPU slowdown, slow 4G). Remaining findings: total blocking time 0.3-1.2 s and 5.8 s main-thread work, 101 KiB unused
-      JavaScript (consider deferring the ECharts bundle, 218 KB gzip, for views that draw no chart on first paint), LCP 3.2 s.
-      GitHub Pages sets the cache lifetime, so "efficient cache lifetimes" cannot be fixed here.
+- [x] Performance, step 4: ECharts (218 KB gzip) is fetched early at low priority but only run when a chart is
+      about to be drawn (the Overview timeline when its panel nears the screen; Analysis, Explore and History
+      before they mount); see 2026-11-05.
+- [ ] Performance, next: a Lighthouse run on a real phone (all Lighthouse numbers so far are its emulated mobile:
+      Moto G Power, 4x CPU slowdown, slow 4G). Remaining findings on 5 Nov: LCP about 3 s live (6 s on an
+      uncompressed local server), 25 KiB unused JavaScript, main-thread style/layout work. GitHub Pages sets the
+      cache lifetime, so "efficient cache lifetimes" cannot be fixed here.
 - [x] Warnings near Worcester (EA flood areas within 12 km) vs elsewhere in the 40 km search:
       only local ones colour the Overview verdict.
 - [x] Flood info drawer and header badge: warnings tagged "near Worcester" or "elsewhere".
@@ -86,6 +89,32 @@ Anything broken here takes priority over the backlog.
   otherwise breaks every later step (found when my first regex was wrong). The first stamp version parsed
   the snapshot time (already epoch ms) as a date string and so never printed it; the offline e2e caught it.
   Not verified: a real browser's print dialog (Chromium's PDF output was used), other browsers' `beforeprint`.
+- 2026-11-05 — daily/2026-11-05-defer-echarts — Health: site live on desktop+mobile, no console errors; all 7
+  gauges current (21 min; Bransford 36 min, back under the 2 h flag); no warnings in force; last deploy green,
+  weekly refresh runs Monday; open PRs #22 and #23 untouched (branched from main). Change: Lighthouse
+  (4 Nov) put ECharts first in its JavaScript execution list (about 1.5 s of script evaluation under the 4x CPU
+  slowdown, in a 2.3 s total) with 101 KiB of it unused on first paint. It was a `defer` script, so it
+  ran before the page was interactive, though the first thing a visitor needs (hero, KPIs, stations) uses no
+  chart. Now `index.html` only preloads it (low priority, no execution) and `loadECharts()` in ui.js runs it
+  on demand: the Overview watches its timeline panel (only after the first data render, because before that
+  the panel sits high on the screen) and loads it 300 px before it scrolls into view, so on a phone it is not
+  run at all until the visitor scrolls, and on desktop it runs at once; Analysis, Explore and History load
+  it before they mount (navigation links start the load on hover/focus, as for Leaflet). Failures are handled
+  like Leaflet's: "Charts unavailable" with a retry on the three views, and a retry under the Overview
+  timeline while the hero and KPIs keep working. Same Lighthouse mobile run, old vs new build served locally
+  with live EA data, 3 runs each: total blocking time 520-1,240 ms → 20-80 ms; start-up JavaScript 1.8-2.5 s →
+  0.3-0.5 s; time to interactive 7.6-8.4 s → 5.9 s; unused JavaScript 301 → 25 KiB; performance score 29-41 →
+  55. With the layout-shift fix of PR #23 applied as well (not merged yet): CLS 0.015-0.019, TBT 10-60 ms,
+  score 77-78. Tests: e2e that ECharts is fetched but not run on a phone until the timeline nears (and is
+  fetched only once), that a failed library leaves hero and KPIs working with a retry on the timeline and on
+  the Analysis view, and that a direct link to a chart view still draws; the first three fail on the old code
+  (the direct-link one is a regression guard). Found while testing: starting to watch the timeline at mount
+  made it "near" before the data arrived (placeholder layout), so ECharts loaded at once on a phone; and the
+  timeline's own refresh would have cleared the library error, so that error carries its own class.
+  Found when merging this with the print change (2026-11-06): on a phone that has not scrolled to the timeline the
+  charting library is not loaded, so a print would have had an empty chart box with no explanation. The print
+  stamp now says "The timeline chart had not loaded when this was printed" and the Overview starts the chart
+  (a second print has it); e2e covers it and fails without it.
 - 2026-11-04 — daily/2026-11-04-layout-shift — Health: site live on desktop+mobile, no console errors; all 7
   gauges reporting (22 min; Bransford 127 min, over the 2 h flag again); no warnings in force; last deploy and
   weekly refresh green; open PR #22 untouched (branched from main). Bransford, third morning running: its

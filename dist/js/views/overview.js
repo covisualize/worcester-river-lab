@@ -1,5 +1,5 @@
 // Overview: the "five-second" command centre for the primary gauge.
-import { $, $$, h, esc, countTo, mountChart, download, setBusy, errorBox } from '../ui.js';
+import { $, $$, h, esc, countTo, mountChart, loadECharts, download, setBusy, errorBox } from '../ui.js';
 import { timeSeriesOption, gaugeSVG, sparkline } from '../charts.js';
 import {
   change, currentRate, trend, rangePosition, rangeWords, freshness, verdict, splitWarnings, warningCount, rateSeries, breakGaps, notable, fmt, toCSV, windowed, time, gaps,
@@ -10,8 +10,34 @@ export function createOverview(ctx) {
   const { store, live } = ctx;
   let chart, sortKey = 'river', reqId = 0, lastWindow = null;
 
+  // The timeline chart needs ECharts, which is not run at startup (it is the biggest piece of start-up work on a phone). It is loaded
+  // when the timeline panel is about to scroll into view, which on a desktop screen is straight away.
+  function startChart() {
+    if (chart) return;
+    $('#ov-timeline .lib-error')?.remove();
+    loadECharts().then(() => {
+      if (chart) return; // another caller (the scroll watcher, or a print) got here first
+      chart = mountChart($('#tl-chart'));
+      if (lastWindow) drawTimeline();
+    }, e => {
+      const box = errorBox(e.message, startChart);
+      box.classList.add('lib-error'); // kept apart from the data errors, which drawTimeline() clears when it refreshes
+      $('#tl-chart').after(box);
+    });
+  }
+
+  // Watched only once the page has its data: before that the panel sits high on the screen, because the content above it is still a placeholder.
+  let watching = false;
+  function watchTimeline() {
+    if (watching) return;
+    watching = true;
+    if ('IntersectionObserver' in window) {
+      const io = new IntersectionObserver(es => { if (es.some(x => x.isIntersecting)) { io.disconnect(); startChart(); } }, { rootMargin: '300px' });
+      io.observe($('#ov-timeline'));
+    } else startChart();
+  }
+
   function mount() {
-    chart = mountChart($('#tl-chart'));
     ctx.rangeButtons($('#tl-range'), () => store.get().range, range => {
       if (range === 'custom') { $('#tl-custom').hidden = false; $('#tl-custom input[name=from]').focus(); return; }
       store.set({ range });
@@ -186,7 +212,7 @@ export function createOverview(ctx) {
     const compare = $('#tl-upstream').checked;
     const ids = compare ? ['2001', PRIMARY] : [PRIMARY];
     setBusy($('#tl-chart'), true);
-    $('#ov-timeline .state-error')?.remove();
+    $('#ov-timeline .state-error:not(.lib-error)')?.remove();
     try {
       const results = await Promise.all(ids.map(i => live.window(i, from, to)));
       if (id !== reqId) return;
@@ -199,7 +225,8 @@ export function createOverview(ctx) {
       lastWindow = series;
       const main = series.find(x => x.id === PRIMARY);
       const sc = live.primary()?.scale;
-      if (!main.raw.length) { chart.set({}); $('#tl-note').textContent = `No readings for ${label}.`; return; }
+      if (!main.raw.length) { chart?.set({}); $('#tl-note').textContent = `No readings for ${label}.`; return; }
+      if (!chart) return; // the library is still to load; startChart() draws once it has
       const showBand = $('#tl-band').checked && !compare && sc?.low != null;
       chart.set(timeSeriesOption({
         series, metric, T: ctx.T, animate: ctx.animate,
@@ -250,7 +277,8 @@ export function createOverview(ctx) {
 
   return {
     mount,
-    render() { drawHero(); drawKPIs(); drawStations(); drawTimeline(); },
+    ensureChart: startChart, // for a print, which cannot wait for the scroll watcher
+    render() { drawHero(); drawKPIs(); drawStations(); drawTimeline(); watchTimeline(); },
     onState(s, prev) { if (s.range !== prev.range || s.from !== prev.from || s.to !== prev.to) { ctx.syncRangeButtons(); drawTimeline(); } },
     onData() { drawHero(); drawKPIs(); drawStations(); drawTimeline(); },
   };
