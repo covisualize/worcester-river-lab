@@ -51,7 +51,8 @@ Anything broken here takes priority over the backlog.
 - [ ] Teme confluence view: Severn vs Teme contribution around Worcester during events.
 - [ ] Offline/PWA: cache the shell and last readings so the page opens without signal,
       clearly marked as cached.
-- [ ] Shareable PNG/CSV of any chart view; print stylesheet for a one-page report.
+- [x] Print stylesheet: dated stamp, no dead buttons, chart fits the page (see 2026-11-06). It is three A4 pages, not one.
+- [ ] Shareable PNG/CSV of any chart view (the Overview timeline already has CSV).
 - [x] Data-quality panel, step 1: per-gauge completeness for the last 24 h in the Flood info drawer's "Data
       confidence" section (readings received of 96, longest gap), see 2026-11-03.
 - [ ] Data-quality panel, step 2: completeness for the window chosen in Explore, and for the Hydrology archive.
@@ -61,6 +62,27 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-11-06 — daily/2026-11-06-print — Health: site live on desktop+mobile, no console errors; all 7 gauges
+  current (20 min; Bransford 50 min); no warnings in force; last deploy green, weekly refresh runs Monday;
+  PRs #22, #23 and #24 are still open and untouched (branched from main, the change avoids the files they
+  rewrite). Change: looked at what printing the Overview produces (A4, via Chromium's print renderer, live
+  data) and fixed what a person holding the paper would notice. (1) The timeline chart was cut off at the
+  right edge (a canvas keeps its screen width): on `beforeprint` the page gets an `is-printing` class that
+  gives charts a 17.5 cm width and redraws them, undone on `afterprint`. (2) Buttons, toggles, the range
+  picker, the "what does this mean" box and the demo link printed as dead controls: hidden in print.
+  (3) "Observed 21 min ago, up to date" is wrong on paper read later, and the page said nothing about when it
+  was made: a print-only stamp at the top gives the print time, the latest Diglis reading time (absolute),
+  that readings and warnings may have changed, and where the official warnings are (GOV.UK, Floodline); a
+  demo replay prints "DEMO REPLAY of February 2020: illustrative, not current conditions" and an offline
+  snapshot prints when it was taken. (4) Cards and the chart do not split across pages and the station cards
+  use three columns. Result: three A4 pages with nothing clipped (before: two pages with the chart cut off and
+  about twenty buttons and toggles); a one-page report was the backlog's hope, but the hero, KPIs, chart and seven station
+  cards do not fit one page legibly. Tests: e2e for the stamp text (live, snapshot, demo), the hidden
+  controls, the figures still printed, and the chart fitting 17.5 cm and returning to full width afterwards;
+  all three fail on the old code. The e2e restores screen media in a `finally`, because a failing print test
+  otherwise breaks every later step (found when my first regex was wrong). The first stamp version parsed
+  the snapshot time (already epoch ms) as a date string and so never printed it; the offline e2e caught it.
+  Not verified: a real browser's print dialog (Chromium's PDF output was used), other browsers' `beforeprint`.
 - 2026-11-03 — daily/2026-11-03-data-completeness — Health: site live on desktop+mobile, no console
   errors; all 7 gauges current (20 min; Bransford 65 min, back under the 2 h flag); no warnings in force;
   rivers falling (Bewdley 0.62 m, Diglis 0.63 m); #20 and #21 are deployed and live (checked the served
