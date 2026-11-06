@@ -565,6 +565,46 @@ main { max-width: 1320px; margin: 0 auto; padding: 22px 20px 40px; outline: none
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
 }
+/* ---------- No jump when the first data arrives ----------
+   Until the first reading history lands, the status pill is in "loading". The hero text, the gauge and the KPI row are
+   still empty or short then, and all fill in at once, pushing everything below them down (layout shift: 0.18 on a phone,
+   0.6 under Lighthouse's throttling). While loading, hold roughly the space they will fill. The heights are settled sizes
+   measured at each breakpoint (KPI rows 403 / 282 / 135 px; hero 554 px at 360 wide, 354 px at 640), taken slightly low so no
+   screen ends up with a gap. The hold ends as soon as the status leaves "loading", and with it any leftover space. */
+body:has(#live-status[data-mode="loading"]) .kpis { min-height: 133px; }
+body:has(#live-status[data-mode="loading"]) .hero-main { min-height: 410px; }
+@media (max-width: 1180px) {
+  body:has(#live-status[data-mode="loading"]) .kpis { min-height: 280px; }
+  body:has(#live-status[data-mode="loading"]) .hero-main { min-height: 335px; }
+}
+@media (max-width: 640px) {
+  body:has(#live-status[data-mode="loading"]) .kpis { min-height: 400px; }
+  body:has(#live-status[data-mode="loading"]) .hero-main { min-height: max(346px, calc(546px - (100vw - 360px) * 1.17)); }
+  body:has(#live-status[data-mode="loading"]) .hero-gauge { min-height: min(230px, calc(100vw * .5)); }
+}
+/* Inside the hero card the text lines also grow one after another on a phone (warning line, level chips, summary, meta row),
+   so hold those too. Settled heights by width: summary 116/93/70 px, meta 157/137/116/80 px, chips 79 px, warning line 50 px. */
+@media (max-width: 560px) {
+  body:has(#live-status[data-mode="loading"]) .hero-summary { min-height: 68px; }
+  body:has(#live-status[data-mode="loading"]) .hero-meta { min-height: 114px; }
+}
+@media (max-width: 430px) {
+  body:has(#live-status[data-mode="loading"]) .hero-level { min-height: 77px; }
+  body:has(#live-status[data-mode="loading"]) .hero-summary { min-height: 91px; }
+  body:has(#live-status[data-mode="loading"]) .hero-meta { min-height: 135px; }
+}
+@media (max-width: 400px) {
+  body:has(#live-status[data-mode="loading"]) .hero-warnline { min-height: 48px; }
+}
+/* The level number and the two chips are "—" until the data arrives, so the row is one line of narrow items and then
+   wraps into two. Give them their usual widths (measured: number 2.03 em, band chip 9.75 em, trend chip 12.25 em) so it wraps
+   the same way from the start, and keep the warning line's first line where it is as a second line appears under it. */
+body:has(#live-status[data-mode="loading"]) #ov-level { min-width: 2.03em; text-align: right; }
+body:has(#live-status[data-mode="loading"]) #ov-band { min-width: 9.75em; }
+body:has(#live-status[data-mode="loading"]) #ov-trend { min-width: 12.25em; }
+body:has(#live-status[data-mode="loading"]) .hero-warnline { align-items: flex-start; }
+body:has(#live-status[data-mode="loading"]) .hero-warnline i { margin-top: .5em; }
+
 @media print {
   .topbar, .bottom-nav, .drawer, .scrim, .tools, .map-shell { display: none !important; }
   body { background: #fff; color: #000; }

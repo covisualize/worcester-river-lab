@@ -31,8 +31,11 @@ Anything broken here takes priority over the backlog.
       `npm run vendor` from scripts/echarts-entry.mjs): 339 → 218 KB gzip, 1034 → 643 KB to parse.
 - [x] Performance, step 2: Leaflet (+ its stylesheet, 45,890 bytes gzip) loads on first Map/Explore
       use.
-- [ ] Performance, next: Lighthouse on a real phone; consider deferring the ECharts bundle (218 KB
-      gzip) the same way for views that draw no chart on first paint (it is needed on Overview).
+- [x] Performance, step 3: no layout jump while the first data arrives (CLS 0.6 → ~0.02 in Lighthouse mobile; see 2026-11-04).
+- [ ] Performance, next: a Lighthouse run on a real phone (the 2026-11-04 numbers are Lighthouse's emulated mobile: Moto G Power,
+      4x CPU slowdown, slow 4G). Remaining findings: total blocking time 0.3-1.2 s and 5.8 s main-thread work, 101 KiB unused
+      JavaScript (consider deferring the ECharts bundle, 218 KB gzip, for views that draw no chart on first paint), LCP 3.2 s.
+      GitHub Pages sets the cache lifetime, so "efficient cache lifetimes" cannot be fixed here.
 - [x] Warnings near Worcester (EA flood areas within 12 km) vs elsewhere in the 40 km search:
       only local ones colour the Overview verdict.
 - [x] Flood info drawer and header badge: warnings tagged "near Worcester" or "elsewhere".
@@ -83,6 +86,25 @@ Anything broken here takes priority over the backlog.
   otherwise breaks every later step (found when my first regex was wrong). The first stamp version parsed
   the snapshot time (already epoch ms) as a date string and so never printed it; the offline e2e caught it.
   Not verified: a real browser's print dialog (Chromium's PDF output was used), other browsers' `beforeprint`.
+- 2026-11-04 — daily/2026-11-04-layout-shift — Health: site live on desktop+mobile, no console errors; all 7
+  gauges reporting (22 min; Bransford 127 min, over the 2 h flag again); no warnings in force; last deploy and
+  weekly refresh green; open PR #22 untouched (branched from main). Bransford, third morning running: its
+  six days of readings have no gap over 45 minutes (568 readings; Diglis 571) but its newest reading is always
+  hours old when looked at, so the EA publishes that gauge's data late, in batches, and fills it in afterwards.
+  "Delayed" on its card and in the pill is accurate; nothing is missing. Change: a first Lighthouse run (emulated
+  mobile) scored accessibility, best practices and SEO 100 but performance 47, mostly layout shift 0.6. Measured
+  in the browser (PerformanceObserver) the hero text, gauge and KPI row are empty or short until the data arrives
+  and then push everything below them down (0.18 on a phone unthrottled, 0.09 on desktop). While the status pill
+  is "loading", CSS (`body:has(#live-status[data-mode="loading"])`) now holds the space they will fill, using
+  settled heights measured at each breakpoint and taken slightly under, plus the usual widths for the level number
+  and chips so the row wraps the same way from the start. Released as soon as the status leaves "loading".
+  Result, same Lighthouse mobile run on old vs new build (live EA data): CLS 0.60 → 0.02, performance 46-50 → 71;
+  in the browser phone 0.18 → 0.03 and desktop 0.09 → 0.003-0.023. Tests: e2e with a `late` scenario (every EA
+  answer 1.5 s late, so placeholders paint first) asserting CLS under 0.1 on a phone and 0.05 on desktop; both
+  fail on the old CSS (0.150 and 0.093). A first version of the test passed on the old CSS too (the fixtures
+  answer instantly, so no shift happened); caught by the negative control and fixed. Not covered: widths between
+  the measured ones may settle a few px differently, and `:has()` needs a 2023+ browser (older ones just keep the
+  old behaviour).
 - 2026-11-03 — daily/2026-11-03-data-completeness — Health: site live on desktop+mobile, no console
   errors; all 7 gauges current (20 min; Bransford 65 min, back under the 2 h flag); no warnings in force;
   rivers falling (Bewdley 0.62 m, Diglis 0.63 m); #20 and #21 are deployed and live (checked the served
