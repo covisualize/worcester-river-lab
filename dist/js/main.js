@@ -245,7 +245,11 @@ function stampPrint() {
   const basis = st.mode === 'demo' ? 'DEMO REPLAY of February 2020: illustrative, not current conditions.'
     : st.mode === 'snapshot' ? `Saved offline snapshot${Number.isFinite(snapAt) ? ` taken ${fmt.full(snapAt)}` : ''}: not current conditions.`
     : last ? `Latest Diglis reading: ${fmt.full(last[0])}.` : 'No Diglis reading was available.';
-  $('#print-stamp').textContent = `Worcester River Lab (unofficial summary of Environment Agency data) · printed ${fmt.full(Date.now())}. ${basis} Readings and warnings may have changed since: for official flood warnings use GOV.UK Check for flooding or call Floodline ${FLOODLINE}.`;
+  // The Overview timeline only loads its charting library when it nears the screen (a phone that has not scrolled to it), and a print
+  // cannot wait for that: say so rather than print an empty box, and start the load so printing again works.
+  const chartMissing = store.get().view === 'overview' && !$('#tl-chart canvas');
+  if (chartMissing) views.overview.ensureChart();
+  $('#print-stamp').textContent = `Worcester River Lab (unofficial summary of Environment Agency data) · printed ${fmt.full(Date.now())}. ${basis}${chartMissing ? ' The timeline chart had not loaded when this was printed.' : ''} Readings and warnings may have changed since: for official flood warnings use GOV.UK Check for flooding or call Floodline ${FLOODLINE}.`;
 }
 // The charts are drawn for the screen's width; draw them again at the page's width before the browser lays the page out, and back afterwards.
 addEventListener('beforeprint', () => { stampPrint(); document.documentElement.classList.add('is-printing'); resizeAll(); });

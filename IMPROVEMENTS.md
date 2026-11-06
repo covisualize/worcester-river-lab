@@ -111,6 +111,10 @@ Anything broken here takes priority over the backlog.
   (the direct-link one is a regression guard). Found while testing: starting to watch the timeline at mount
   made it "near" before the data arrived (placeholder layout), so ECharts loaded at once on a phone; and the
   timeline's own refresh would have cleared the library error, so that error carries its own class.
+  Found when merging this with the print change (2026-11-06): on a phone that has not scrolled to the timeline the
+  charting library is not loaded, so a print would have had an empty chart box with no explanation. The print
+  stamp now says "The timeline chart had not loaded when this was printed" and the Overview starts the chart
+  (a second print has it); e2e covers it and fails without it.
 - 2026-11-04 — daily/2026-11-04-layout-shift — Health: site live on desktop+mobile, no console errors; all 7
   gauges reporting (22 min; Bransford 127 min, over the 2 h flag again); no warnings in force; last deploy and
   weekly refresh green; open PR #22 untouched (branched from main). Bransford, third morning running: its

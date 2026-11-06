@@ -13,8 +13,10 @@ export function createOverview(ctx) {
   // The timeline chart needs ECharts, which is not run at startup (it is the biggest piece of start-up work on a phone). It is loaded
   // when the timeline panel is about to scroll into view, which on a desktop screen is straight away.
   function startChart() {
+    if (chart) return;
     $('#ov-timeline .lib-error')?.remove();
     loadECharts().then(() => {
+      if (chart) return; // another caller (the scroll watcher, or a print) got here first
       chart = mountChart($('#tl-chart'));
       if (lastWindow) drawTimeline();
     }, e => {
@@ -275,6 +277,7 @@ export function createOverview(ctx) {
 
   return {
     mount,
+    ensureChart: startChart, // for a print, which cannot wait for the scroll watcher
     render() { drawHero(); drawKPIs(); drawStations(); drawTimeline(); watchTimeline(); },
     onState(s, prev) { if (s.range !== prev.range || s.from !== prev.from || s.to !== prev.to) { ctx.syncRangeButtons(); drawTimeline(); } },
     onData() { drawHero(); drawKPIs(); drawStations(); drawTimeline(); },

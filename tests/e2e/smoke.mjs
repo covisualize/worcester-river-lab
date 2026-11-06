@@ -379,6 +379,25 @@ try {
     assert.deepEqual(ph.errors, []);
   });
   await ph.context.close();
+  const pp = await open(browser, { device: 'iPhone 13' });
+  await step('printing on a phone before the timeline has loaded says so, loads it, and a second print has the chart', async () => {
+    await waitLive(pp.page);
+    await pp.page.waitForTimeout(1500);
+    assert.equal(await pp.page.evaluate(() => typeof window.echarts), 'undefined', 'the chart is not loaded yet');
+    await pp.page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+    assert.match(await pp.page.textContent('#print-stamp'), /The timeline chart had not loaded when this was printed\./, 'the printout does not silently lack its chart');
+    await pp.page.waitForSelector('#tl-chart canvas', { timeout: 10000 }); // loaded without any scrolling
+    await pp.page.waitForTimeout(500);
+    const canvases = await pp.page.locator('#tl-chart canvas').count();
+    await pp.page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+    assert.doesNotMatch(await pp.page.textContent('#print-stamp'), /had not loaded/, 'a second print has the chart');
+    await pp.page.waitForTimeout(500);
+    assert.equal(await pp.page.locator('#tl-chart canvas').count(), canvases, 'asking again does not draw a second chart');
+    assert.equal(pp.requested.filter(p => p.endsWith('/vendor/echarts.slim.min.js')).length, 1, 'the library is fetched once');
+    await pp.page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+    assert.deepEqual(pp.errors, []);
+  });
+  await pp.context.close();
   const ne = await open(browser, { scenario: 'noecharts' });
   await step('a failed charting library leaves the hero and KPIs working, and the timeline offers a retry', async () => {
     await waitLive(ne.page);
