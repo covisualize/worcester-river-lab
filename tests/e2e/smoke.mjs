@@ -83,9 +83,11 @@ function eaResponse(url, { withAlert, scenario }) {
   return null;
 }
 
-async function open(browser, { path = '/', viewport, device, offline = false, withAlert = true, scenario = null } = {}) {
+async function open(browser, { path = '/', viewport, device, offline = false, withAlert = true, scenario = null, watchShifts = false } = {}) {
   const context = await browser.newContext(device ? { ...devices[device] } : { viewport: viewport || { width: 1400, height: 950 } });
   const page = await context.newPage();
+  // Sum of the page's layout shifts (CLS) since it started loading, in window.__shift.
+  if (watchShifts) await page.addInitScript(() => { window.__shift = 0; new PerformanceObserver(l => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__shift += e.value; }).observe({ type: 'layout-shift', buffered: true }); });
   await page.clock.setFixedTime(NOW);
   const errors = [];
   const requested = [];
@@ -107,10 +109,16 @@ async function open(browser, { path = '/', viewport, device, offline = false, wi
       try { return route.fulfill({ body: await readFile(join(root, p)), contentType: types[extname(p)] || 'application/octet-stream' }); } catch { return route.fulfill({ status: 404 }); }
     }
     if (offline) return route.abort('internetdisconnected');
+    // 'late': every EA answer takes 1.5 s, so the page paints its placeholders first and the data arrives afterwards.
+    if (scenario === 'late') await new Promise(r => setTimeout(r, 1500));
     // EA reading history: 'slow' answers after 8 s, 'noreadings' fails fast. Gauge metadata and warnings are untouched.
     if (/\/readings$/.test(new URL(url).pathname)) {
       if (scenario === 'noreadings') return route.abort('failed');
+      // 'badgauge': only Bransford's history request fails; the other six answer normally.
+      if (scenario === 'badgauge' && /\/measures\/2086-/.test(url)) return route.abort('failed');
       if (scenario === 'slow' || scenario === 'slowstations' || scenario === 'remoteslow') await new Promise(r => setTimeout(r, 8000));
+      // 'primaryfirst': Diglis's history arrives at once, every other gauge's 6 s later.
+      if (scenario === 'primaryfirst' && !/\/measures\/2085-/.test(url)) await new Promise(r => setTimeout(r, 6000));
     }
     // 'slowstations': every gauge except Diglis (2085) answers its metadata 8 s late.
     if (scenario === 'slowstations' && /\/id\/stations\/\w+\.json$/.test(new URL(url).pathname) && !url.includes('/2085.json')) await new Promise(r => setTimeout(r, 8000));
@@ -148,6 +156,35 @@ try {
     assert.equal(await page.locator('.kpi').count(), 6);
     assert.equal(await page.locator('#st-grid .station').count(), 7);
     assert.ok(!(await page.textContent('main')).includes('NaN'));
+  });
+
+  await step('printing: a dated stamp, no dead buttons, and the chart drawn at the page width', async () => {
+    await page.waitForSelector('#tl-chart canvas');
+    const wide = await page.evaluate(() => document.querySelector('#tl-chart').getBoundingClientRect().width);
+    assert.ok(wide > 700, 'the chart is wide on screen');
+    try {
+      await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+      await page.emulateMedia({ media: 'print' });
+      const stamp = await page.textContent('#print-stamp');
+      assert.match(stamp, /unofficial summary of Environment Agency data\) · printed \w{3}, \d+ \w{3} \d{4}, \d\d:\d\d (GMT|BST)\. Latest Diglis reading: \w{3}, \d+ \w{3} \d{4}, \d\d:\d\d (GMT|BST)\./);
+      assert.match(stamp, /official flood warnings use GOV\.UK Check for flooding or call Floodline 0345 988 1188/);
+      assert.ok(await page.isVisible('#print-stamp'));
+      for (const hidden of ['#ov-warn-open', '#tl-csv', '#tl-explore', '#tl-range', '.toggle-row', '.explain', '#st-grid .station .btn']) {
+        assert.ok(await page.locator(hidden).first().isHidden(), `${hidden} is not printed`);
+      }
+      assert.equal(await page.locator('.kpi:visible').count(), 6, 'the figures are printed');
+      assert.equal(await page.locator('#st-grid .station:visible').count(), 7);
+      // 17.5 cm is 661 px: the canvas is redrawn to that, not left at its screen width and cut off by the page.
+      const fit = await page.evaluate(() => { const c = document.querySelector('#tl-chart canvas').getBoundingClientRect(), box = document.querySelector('#tl-chart').getBoundingClientRect(); return { box: Math.round(box.width), canvasRight: Math.round(c.right), boxRight: Math.round(box.right) }; });
+      assert.ok(fit.box <= 662 && fit.canvasRight <= fit.boxRight + 1, `chart fits the page (${JSON.stringify(fit)})`);
+    } finally {
+      // Whatever happened above, leave the page as a screen again so the later steps are not affected.
+      await page.emulateMedia({ media: null });
+      await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+    }
+    await page.waitForFunction(w => document.querySelector('#tl-chart').getBoundingClientRect().width > w, 700, { timeout: 5000 });
+    assert.ok(await page.isHidden('#print-stamp'), 'the stamp is for paper only');
+    assert.ok(await page.isVisible('#tl-csv'), 'controls are back on screen');
   });
 
   await step('range switch animates the timeline and updates the URL', async () => {
@@ -458,6 +495,20 @@ try {
   });
   await far.context.close();
 
+  /* ---------- The Overview does not jump around while the first data arrives ---------- */
+  // The placeholders are painted first and every EA answer arrives 1.5 s later, as on a real connection.
+  for (const [name, opts, limit] of [['phone', { device: 'iPhone 13' }, 0.1], ['desktop', {}, 0.05]]) {
+    const sh = await open(browser, { ...opts, scenario: 'late', watchShifts: true });
+    await step(`overview on a ${name}: layout shift while the data arrives stays under ${limit}${limit === 0.1 ? ' (Google\'s "good" limit)' : ''}`, async () => {
+      await waitLive(sh.page);
+      await sh.page.waitForTimeout(2500);
+      const cls = await sh.page.evaluate(() => window.__shift);
+      console.log(`    (${name} CLS ${cls.toFixed(3)})`);
+      assert.ok(cls < limit, `layout shift ${cls.toFixed(3)}`);
+    });
+    await sh.context.close();
+  }
+
   /* ---------- A gauge the EA has not updated for hours is named in the status pill ---------- */
   const lag = await open(browser, { scenario: 'delayed' });
   await step('status pill: "Live" also says when another gauge is hours behind', async () => {
@@ -467,7 +518,49 @@ try {
     assert.match(await lag.page.getAttribute('#live-status', 'title'), /Delayed: Bransford, last reading .*; the EA has not published a newer one/);
     assert.equal(await lag.page.getAttribute('#live-status', 'data-mode'), 'live', 'Diglis itself is current, so the pill is not in its warning state');
   });
+  await step('data confidence: the drawer lists readings received per gauge, and flags a feed that has gone quiet', async () => {
+    await lag.page.click('#live-status');
+    await lag.page.waitForSelector('#intel.open [data-sec="confidence"] tbody tr');
+    const rows = await lag.page.$$eval('#intel [data-sec="confidence"] tbody tr', trs => Object.fromEntries(trs.map(tr => [tr.dataset.id, [...tr.cells].map(c => c.textContent.trim())])));
+    assert.deepEqual(rows['2085'], ['Diglis', '96 of 96', 'none'], 'a healthy gauge: everything in the period arrived, and a normal publishing delay is not a gap');
+    assert.equal(rows['2001'][1], '96 of 96');
+    assert.equal(rows['2086'][0], 'Bransford');
+    assert.equal(rows['2086'][1], '84 of 96', 'the feed stopped 4 h before now, so 12 readings of the period are missing');
+    assert.match(rows['2086'][2], /^4 h( \d+ min)? \(ongoing\)$/, 'about 4 h of silence since the newest reading, measured to now');
+    assert.match(await lag.page.textContent('#intel [data-sec="confidence"]'), /A gap is a break of more than 30 minutes/);
+    await lag.page.waitForFunction(() => !document.querySelector('.toast'), null, { timeout: 6000 }).catch(() => {});
+    await lag.page.waitForTimeout(600);
+    assert.deepEqual(await axeViolations(lag.page), [], 'the open confidence table is accessible (light)');
+    await lag.page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+    await lag.page.waitForTimeout(400);
+    assert.deepEqual(await axeViolations(lag.page), [], 'the open confidence table is accessible (dark)');
+  });
   await lag.context.close();
+  const pf = await open(browser, { scenario: 'primaryfirst' });
+  await step('data confidence: no half-loaded table while the other gauges\' histories are still arriving', async () => {
+    await pf.page.waitForFunction(() => window.__wr?.live.status.mode === 'live' && window.__wr.live.status.refreshing && window.__wr.live.series['2085']?.length, null, { timeout: 15000 });
+    assert.equal(await pf.page.evaluate(() => Object.keys(window.__wr.live.series).length), 1, 'only Diglis has its history so far');
+    await pf.page.click('#live-status');
+    await pf.page.waitForSelector('#intel.open [data-sec="confidence"] summary');
+    assert.equal(await pf.page.locator('#intel [data-sec="confidence"] tbody tr').count(), 0, 'no "0 of 96" rows for gauges that simply have not loaded');
+    await pf.page.waitForFunction(() => window.__wr.live.status.refreshing === false, null, { timeout: 30000 });
+    await pf.page.waitForSelector('#intel [data-sec="confidence"] tbody tr');
+    assert.equal(await pf.page.locator('#intel [data-sec="confidence"] tbody tr').count(), 7, 'the table appears once everything has loaded');
+    assert.equal(await pf.page.textContent('#intel [data-sec="confidence"] tr[data-id="2001"] td:nth-child(2)'), '96 of 96');
+  });
+  await pf.context.close();
+  const bad = await open(browser, { scenario: 'badgauge' });
+  await step('data confidence: a gauge whose history failed to load is not counted as missing readings', async () => {
+    await waitLive(bad.page);
+    await bad.page.waitForFunction(() => window.__wr.live.status.refreshing === false && window.__wr.live.historyLoaded, null, { timeout: 15000 });
+    await bad.page.click('#live-status');
+    await bad.page.waitForSelector('#intel [data-sec="confidence"] tbody tr');
+    const rows = await bad.page.$$eval('#intel [data-sec="confidence"] tbody tr', trs => Object.fromEntries(trs.map(tr => [tr.dataset.id, [...tr.cells].map(c => c.textContent.trim())])));
+    assert.deepEqual(rows['2086'], ['Bransford', '—', 'not fetched this time'], 'no "0 of 96 / 25 h (ongoing)" for a request this site failed to make');
+    assert.equal(rows['2085'][1], '96 of 96');
+    assert.match(await bad.page.textContent('#intel [data-sec="confidence"]'), /"Not fetched this time" is different: this site's own request/);
+  });
+  await bad.context.close();
   await step('status pill: all gauges current means no extra words', async () => {
     assert.match(await page.textContent('#live-status'), /^Live · \d\d:\d\d$/);
   });
@@ -517,6 +610,8 @@ try {
     assert.match(await off.page.textContent('#live-status'), /Offline snapshot/);
     assert.notEqual(await off.page.textContent('#ov-level'), '—');
     assert.match(await off.page.textContent('#ov-verdict'), /^Not current · last reading was /);
+    await off.page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+    assert.match(await off.page.textContent('#print-stamp'), /Saved offline snapshot taken .*: not current conditions\./, 'a printed snapshot says it is one');
   });
   await off.context.close();
 
@@ -530,6 +625,8 @@ try {
     assert.match(await demo.page.textContent('#demo-banner'), /DEMO REPLAY · NOT CURRENT CONDITIONS/);
     assert.match(await demo.page.textContent('#demo-banner'), /illustrative, not real/);
     assert.match(await demo.page.textContent('#live-status'), /Demo replay/);
+    await demo.page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+    assert.match(await demo.page.textContent('#print-stamp'), /DEMO REPLAY of February 2020: illustrative, not current conditions\./, 'a printed demo cannot pass for a real flood');
     assert.ok(await demo.page.isHidden('#ov-demo-link'));
     await demo.page.click('.primary-nav [data-nav="analysis"]');
     assert.match(demo.page.url(), /demo=feb2020/, 'demo survives navigation');

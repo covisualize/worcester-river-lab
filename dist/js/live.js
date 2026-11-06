@@ -25,6 +25,7 @@ export function createLive({ demo = null } = {}) {
     floods: null,      // { fetchedAt, items }
     floodsError: null,
     localAreas: null,  // Set of EA flood-area ids near Worcester, once fetched
+    historyLoaded: null, // Set of gauge ids whose reading history arrived in the latest refresh
     status: { mode: 'loading', updatedAt: null, error: null, snapshotAt: null },
 
     on(type, fn) { target.addEventListener(type, e => fn(e.detail)); },
@@ -103,11 +104,13 @@ export function createLive({ demo = null } = {}) {
         }
         const results = await Promise.allSettled(pending);
         let ok = 0;
+        const loaded = new Set();
         results.forEach((r, i) => {
           const id = live.stations[i].id;
-          if (r.status === 'fulfilled' && r.value.length) { live.series[id] = r.value; ok++; }
+          if (r.status === 'fulfilled' && r.value.length) { live.series[id] = r.value; loaded.add(id); ok++; }
           else if (r.status === 'rejected') live.stations[i].error = r.reason?.message;
         });
+        live.historyLoaded = loaded;
 
         if (ok) {
           live.status = { mode: 'live', updatedAt: Date.now(), error: ok < live.stations.length ? `${live.stations.length - ok} station(s) did not respond` : null, refreshing: false };
