@@ -148,6 +148,35 @@ try {
     assert.ok(!(await page.textContent('main')).includes('NaN'));
   });
 
+  await step('printing: a dated stamp, no dead buttons, and the chart drawn at the page width', async () => {
+    await page.waitForSelector('#tl-chart canvas');
+    const wide = await page.evaluate(() => document.querySelector('#tl-chart').getBoundingClientRect().width);
+    assert.ok(wide > 700, 'the chart is wide on screen');
+    try {
+      await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+      await page.emulateMedia({ media: 'print' });
+      const stamp = await page.textContent('#print-stamp');
+      assert.match(stamp, /unofficial summary of Environment Agency data\) · printed \w{3}, \d+ \w{3} \d{4}, \d\d:\d\d (GMT|BST)\. Latest Diglis reading: \w{3}, \d+ \w{3} \d{4}, \d\d:\d\d (GMT|BST)\./);
+      assert.match(stamp, /official flood warnings use GOV\.UK Check for flooding or call Floodline 0345 988 1188/);
+      assert.ok(await page.isVisible('#print-stamp'));
+      for (const hidden of ['#ov-warn-open', '#tl-csv', '#tl-explore', '#tl-range', '.toggle-row', '.explain', '#st-grid .station .btn']) {
+        assert.ok(await page.locator(hidden).first().isHidden(), `${hidden} is not printed`);
+      }
+      assert.equal(await page.locator('.kpi:visible').count(), 6, 'the figures are printed');
+      assert.equal(await page.locator('#st-grid .station:visible').count(), 7);
+      // 17.5 cm is 661 px: the canvas is redrawn to that, not left at its screen width and cut off by the page.
+      const fit = await page.evaluate(() => { const c = document.querySelector('#tl-chart canvas').getBoundingClientRect(), box = document.querySelector('#tl-chart').getBoundingClientRect(); return { box: Math.round(box.width), canvasRight: Math.round(c.right), boxRight: Math.round(box.right) }; });
+      assert.ok(fit.box <= 662 && fit.canvasRight <= fit.boxRight + 1, `chart fits the page (${JSON.stringify(fit)})`);
+    } finally {
+      // Whatever happened above, leave the page as a screen again so the later steps are not affected.
+      await page.emulateMedia({ media: null });
+      await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+    }
+    await page.waitForFunction(w => document.querySelector('#tl-chart').getBoundingClientRect().width > w, 700, { timeout: 5000 });
+    assert.ok(await page.isHidden('#print-stamp'), 'the stamp is for paper only');
+    assert.ok(await page.isVisible('#tl-csv'), 'controls are back on screen');
+  });
+
   await step('range switch animates the timeline and updates the URL', async () => {
     await page.click('#tl-range [data-range="7d"]');
     await page.waitForFunction(() => location.search.includes('range=7d'));
@@ -464,6 +493,8 @@ try {
     assert.match(await off.page.textContent('#live-status'), /Offline snapshot/);
     assert.notEqual(await off.page.textContent('#ov-level'), '—');
     assert.match(await off.page.textContent('#ov-verdict'), /^Not current · last reading was /);
+    await off.page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+    assert.match(await off.page.textContent('#print-stamp'), /Saved offline snapshot taken .*: not current conditions\./, 'a printed snapshot says it is one');
   });
   await off.context.close();
 
@@ -477,6 +508,8 @@ try {
     assert.match(await demo.page.textContent('#demo-banner'), /DEMO REPLAY · NOT CURRENT CONDITIONS/);
     assert.match(await demo.page.textContent('#demo-banner'), /illustrative, not real/);
     assert.match(await demo.page.textContent('#live-status'), /Demo replay/);
+    await demo.page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+    assert.match(await demo.page.textContent('#print-stamp'), /DEMO REPLAY of February 2020: illustrative, not current conditions\./, 'a printed demo cannot pass for a real flood');
     assert.ok(await demo.page.isHidden('#ov-demo-link'));
     await demo.page.click('.primary-nav [data-nav="analysis"]');
     assert.match(demo.page.url(), /demo=feb2020/, 'demo survives navigation');
