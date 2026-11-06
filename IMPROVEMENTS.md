@@ -54,14 +54,38 @@ Anything broken here takes priority over the backlog.
 - [ ] Teme confluence view: Severn vs Teme contribution around Worcester during events.
 - [ ] Offline/PWA: cache the shell and last readings so the page opens without signal,
       clearly marked as cached.
-- [ ] Shareable PNG/CSV of any chart view; print stylesheet for a one-page report.
-- [ ] Data-quality panel: per-station completeness for the selected window.
+- [x] Print stylesheet: dated stamp, no dead buttons, chart fits the page (see 2026-11-06). It is three A4 pages, not one.
+- [ ] Shareable PNG/CSV of any chart view (the Overview timeline already has CSV).
+- [x] Data-quality panel, step 1: per-gauge completeness for the last 24 h in the Flood info drawer's "Data
+      confidence" section (readings received of 96, longest gap), see 2026-11-03.
+- [ ] Data-quality panel, step 2: completeness for the window chosen in Explore, and for the Hydrology archive.
 - [x] Unit tests for `api.js` normalisation and the `live.js` state machine (see 2026-10-29).
 - [x] Phone nit: keep "24 h" together in the station-card change line (non-breaking space; done in PR #17, 2026-10-30).
 - [ ] Optional custom domain once the owner buys one (see README).
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-11-06 — daily/2026-11-06-print — Health: site live on desktop+mobile, no console errors; all 7 gauges
+  current (20 min; Bransford 50 min); no warnings in force; last deploy green, weekly refresh runs Monday;
+  PRs #22, #23 and #24 are still open and untouched (branched from main, the change avoids the files they
+  rewrite). Change: looked at what printing the Overview produces (A4, via Chromium's print renderer, live
+  data) and fixed what a person holding the paper would notice. (1) The timeline chart was cut off at the
+  right edge (a canvas keeps its screen width): on `beforeprint` the page gets an `is-printing` class that
+  gives charts a 17.5 cm width and redraws them, undone on `afterprint`. (2) Buttons, toggles, the range
+  picker, the "what does this mean" box and the demo link printed as dead controls: hidden in print.
+  (3) "Observed 21 min ago, up to date" is wrong on paper read later, and the page said nothing about when it
+  was made: a print-only stamp at the top gives the print time, the latest Diglis reading time (absolute),
+  that readings and warnings may have changed, and where the official warnings are (GOV.UK, Floodline); a
+  demo replay prints "DEMO REPLAY of February 2020: illustrative, not current conditions" and an offline
+  snapshot prints when it was taken. (4) Cards and the chart do not split across pages and the station cards
+  use three columns. Result: three A4 pages with nothing clipped (before: two pages with the chart cut off and
+  about twenty buttons and toggles); a one-page report was the backlog's hope, but the hero, KPIs, chart and seven station
+  cards do not fit one page legibly. Tests: e2e for the stamp text (live, snapshot, demo), the hidden
+  controls, the figures still printed, and the chart fitting 17.5 cm and returning to full width afterwards;
+  all three fail on the old code. The e2e restores screen media in a `finally`, because a failing print test
+  otherwise breaks every later step (found when my first regex was wrong). The first stamp version parsed
+  the snapshot time (already epoch ms) as a date string and so never printed it; the offline e2e caught it.
+  Not verified: a real browser's print dialog (Chromium's PDF output was used), other browsers' `beforeprint`.
 - 2026-11-04 — daily/2026-11-04-layout-shift — Health: site live on desktop+mobile, no console errors; all 7
   gauges reporting (22 min; Bransford 127 min, over the 2 h flag again); no warnings in force; last deploy and
   weekly refresh green; open PR #22 untouched (branched from main). Bransford, third morning running: its
@@ -81,6 +105,32 @@ Anything broken here takes priority over the backlog.
   answer instantly, so no shift happened); caught by the negative control and fixed. Not covered: widths between
   the measured ones may settle a few px differently, and `:has()` needs a 2023+ browser (older ones just keep the
   old behaviour).
+- 2026-11-03 — daily/2026-11-03-data-completeness — Health: site live on desktop+mobile, no console
+  errors; all 7 gauges current (20 min; Bransford 65 min, back under the 2 h flag); no warnings in force;
+  rivers falling (Bewdley 0.62 m, Diglis 0.63 m); #20 and #21 are deployed and live (checked the served
+  map.js and data.js), the last deploy and the weekly refresh are green, no open PRs. Change: the drawer's
+  "Data confidence" section said only "Gauges reporting 7 of 7", which hides what Bransford has done on
+  1-2 Nov (hours without a reading). It now has a per-gauge table: readings received in the last 24 h
+  against the 96 the EA's 15-minute interval gives, and the longest gap (more than 30 min between readings;
+  "ongoing" when nothing came in after it). New pure helper `completeness()` and `fmt.duration()` in
+  data.js. Design points found while testing: (1) EA readings appear 20-40 min after their timestamp, so
+  judging up to "now" flagged every healthy gauge as "94 of 96 / 31 min (ongoing)"; the period therefore
+  ends one hour ago (the "up to date" threshold), which the 25 h of history covers exactly. (2) On first
+  load the status is already "live" once Diglis has its history while the other six are still loading, so a
+  naive table showed six gauges as "0 of 96"; caught by the live check, and the table now waits for the
+  refresh to finish. Tests: unit tests for `completeness` (healthy, normal delay, stopped feed, hole in the
+  middle, outside-window/empty, 30 vs 45 min breaks) and `fmt.duration`; e2e for the table (healthy gauges 96
+  of 96, Bransford's stopped feed 84 of 96 with an ongoing 3 h gap, axe audit of the open section in both
+  themes) and for the no-half-loaded-table case (new `primaryfirst` scenario); each fails without its code.
+  Live check against the real EA API on desktop and a phone viewport: six gauges 96 of 96, Bransford 95 of
+  96 (one missing reading, not a gap), no overflow, no errors. The "24 h" header uses a non-breaking space.
+  Codex then found two more, both confirmed: (1) a gap was only measured inside the period ending one hour
+  ago, so a gauge that had resumed in the last hour was still called "ongoing"; gaps are now found in the whole
+  series up to now, and the stretch since the newest reading counts (as "ongoing") only past the 60 min
+  "up to date" limit; (2) a gauge whose own history request failed (or came back empty) kept an old series
+  and showed as "0 of 96" with a note blaming the EA; `live.historyLoaded` now records which gauges loaded in
+  the latest refresh and the others show "not fetched this time". Unit tests for both (including the exact
+  Codex scenario) and an e2e `badgauge` scenario; each fails on the previous code.
 - 2026-11-02 — daily/2026-11-02-delayed-gauge-pill — Health: site live on desktop+mobile, no console
   errors; weekly refresh (05:17) and the deploy after it green, 6 of 7 gauges current (25 min); no
   warnings in force; rivers falling (Bewdley 0.72 m, Diglis 0.66 m). PR #20 still open, so untouched

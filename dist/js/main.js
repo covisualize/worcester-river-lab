@@ -2,7 +2,7 @@
 import { $, $$, esc, setDemoExport, tokens, reducedMotion, toggleFullscreen, toast, resizeAll, errorBox } from './ui.js';
 import { createStore, decode, VIEWS } from './store.js';
 import { createLive } from './live.js';
-import { STATIONS, RANGES } from './config.js';
+import { STATIONS, RANGES, PRIMARY, FLOODLINE } from './config.js';
 import { transform, lttb, fmt, freshness, delayedGauges, ukDayStart, ukDateInput, time } from './data.js';
 import { createOverview } from './views/overview.js';
 import { createMapView } from './views/map.js';
@@ -230,6 +230,21 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'f') ctx.openIntel();
 });
 matchMedia('(prefers-reduced-motion: reduce)').addEventListener?.('change', e => { ctx.animate = !e.matches; });
+
+/* ---------- Printing ---------- */
+
+// A printout is read later, when "21 min ago" and "Up to date" are no longer true, so it says when it was made, which reading it
+// shows, and where the official warnings are.
+function stampPrint() {
+  const st = live.status, last = live.latestOf(PRIMARY), snapAt = st.snapshotAt; // epoch ms, or null
+  const basis = st.mode === 'demo' ? 'DEMO REPLAY of February 2020: illustrative, not current conditions.'
+    : st.mode === 'snapshot' ? `Saved offline snapshot${Number.isFinite(snapAt) ? ` taken ${fmt.full(snapAt)}` : ''}: not current conditions.`
+    : last ? `Latest Diglis reading: ${fmt.full(last[0])}.` : 'No Diglis reading was available.';
+  $('#print-stamp').textContent = `Worcester River Lab (unofficial summary of Environment Agency data) · printed ${fmt.full(Date.now())}. ${basis} Readings and warnings may have changed since: for official flood warnings use GOV.UK Check for flooding or call Floodline ${FLOODLINE}.`;
+}
+// The charts are drawn for the screen's width; draw them again at the page's width before the browser lays the page out, and back afterwards.
+addEventListener('beforeprint', () => { stampPrint(); document.documentElement.classList.add('is-printing'); resizeAll(); });
+addEventListener('afterprint', () => { document.documentElement.classList.remove('is-printing'); resizeAll(); });
 
 intel.mount();
 live.on('status', st => { drawStatus(st); drawDemo(st); });
