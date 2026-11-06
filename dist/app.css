@@ -568,7 +568,16 @@ main { max-width: 1320px; margin: 0 auto; padding: 22px 20px 40px; outline: none
 @media print {
   .topbar, .bottom-nav, .drawer, .scrim, .tools, .map-shell { display: none !important; }
   body { background: #fff; color: #000; }
+  /* A printout is read later and cannot be clicked: no controls, and the stamp says when it was made. */
+  .btn, .icon-btn, .seg, .toggle-row, .custom-range, .explain, .demo-link, .foot-actions, .more-detail { display: none !important; }
+  .print-stamp { display: block !important; font-size: 12px; line-height: 1.45; border: 1px solid #000; padding: 6px 10px; margin: 0 0 12px; }
+  .hero, .kpis, .kpi, .station, .chart { break-inside: avoid; }
+  .panel-head, .more-detail { break-after: avoid; }
+  .stations { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+/* Set while printing (see beforeprint in main.js) so the charts are drawn at the page's width and not clipped. */
+.print-stamp { display: none; }
+html.is-printing .chart { width: 17.5cm; max-width: 100%; }
 
 /* Demo replay: impossible to mistake for live conditions. */
 .demo-banner { position: sticky; top: 0; z-index: 40; margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; border: 2px solid var(--sim); background: color-mix(in srgb, var(--sim) 14%, var(--surface)); color: var(--text); font-size: 14px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
