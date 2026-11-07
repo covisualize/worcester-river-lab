@@ -172,6 +172,11 @@ addEventListener('popstate', () => {
 
 /* ---------- Status pill ---------- */
 
+// The EA sometimes takes 10 s or more to answer. Until it has said anything at all, the page can only show placeholders, which look the
+// same at 11 s as at 1 s; after a few seconds it says that the wait is the EA's (set once, below, and replaced as soon as data arrives).
+let slowWait = false;
+const SLOW_AFTER_MS = 6000;
+
 function drawStatus(st) {
   const pill = $('#live-status');
   const last = live.latestOf('2085');
@@ -179,7 +184,7 @@ function drawStatus(st) {
   // Other gauges the EA has not updated for a while (Diglis is reported above on its own).
   const delayed = st.mode === 'live' ? delayedGauges(live.stations, id => live.latestOf(id), Date.now(), '2085') : [];
   let text, mode = st.mode;
-  if (st.refreshing && !st.updatedAt) text = st.metadata ? 'Loading readings…' : 'Connecting to EA…';
+  if (st.refreshing && !st.updatedAt) text = st.metadata ? 'Loading readings…' : slowWait ? 'EA is slow to answer…' : 'Connecting to EA…';
   else if (st.offline) { text = 'Offline'; mode = 'error'; }
   else if (st.mode === 'live') { text = `Live · ${fmt.time(st.updatedAt)}`; if (fr.key === 'stale') { mode = 'stale'; text = `Live · reading ${fmt.age(fr.ageMin)}`; } else if (delayed.length) text += ` · ${delayed.length} gauge${delayed.length > 1 ? 's' : ''} delayed`; }
   else if (st.mode === 'stale') text = 'Update failed · cached';
@@ -267,6 +272,13 @@ const first = store.get();
 show(first.view);
 if (first.intel) intel.open();
 live.start();
+setTimeout(() => {
+  const st = live.status;
+  if (st.mode !== 'loading' || st.metadata || st.updatedAt) return; // data (or an error) has arrived: nothing to explain
+  slowWait = true;
+  drawStatus(st);
+  $('#ov-summary').textContent = `The Environment Agency is taking longer than usual to answer, so there is nothing to show yet. This page keeps waiting and will fill in by itself. For official flood warnings meanwhile, use GOV.UK Check for flooding or call Floodline ${FLOODLINE}.`;
+}, SLOW_AFTER_MS);
 
 // Expose a tiny debug handle for the end-to-end smoke test.
 window.__wr = { store, live, ctx };

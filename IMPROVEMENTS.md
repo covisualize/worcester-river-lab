@@ -68,6 +68,22 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-11-07 — daily/2026-11-07-slow-ea-notice — Health: a first health run at 07:51 caught the EA in a slow
+  spell: on desktop the page was still "loading" with three gauges missing after the script's 45 s wait, and the
+  phone run logged console errors (text not captured, so I cannot say what they were). Direct requests to the EA at
+  that moment took 10.3 s (readings, then 0.5 s), 11.5 s (station details) and 13.5 s (warnings), so it was the EA,
+  not the site; six further runs (desktop and phone) over the next minutes were all healthy with no errors. All
+  7 gauges current (Bransford 37 min); no warnings in force; the four PRs merged on 6 Nov are deployed (last
+  deploy green, weekly refresh runs Monday); no open PRs. Change: simulating a slow EA (every answer 12 s late)
+  showed that a visitor sees "Connecting to EA…" and "Checking the river…" for the whole wait, identical at 11 s
+  to 1 s, with nothing saying that the wait is the EA's. After 6 s without any answer (gauge details count as an
+  answer, so the 8 s slow-history case is unaffected) the pill now says "EA is slow to answer…" and the summary
+  says the EA is taking longer than usual, that nothing is shown yet, that the page will fill in by itself, and
+  gives GOV.UK Check for flooding and Floodline for official warnings; real data replaces it as soon as it
+  arrives and no number is shown meanwhile. Tests: e2e `veryslow` scenario (every EA answer 9 s late) for the notice and its
+  replacement, plus an assertion in the slow-history test that the notice is not shown when the EA has answered;
+  the first fails on the old code. Follow-up idea: after the notice, offer the saved snapshot ("show the last saved
+  readings from <date>") while waiting; not done, because showing old readings as a choice needs its own labelling.
 - 2026-11-06 — daily/2026-11-06-print — Health: site live on desktop+mobile, no console errors; all 7 gauges
   current (20 min; Bransford 50 min); no warnings in force; last deploy green, weekly refresh runs Monday;
   PRs #22, #23 and #24 are still open and untouched (branched from main, the change avoids the files they
