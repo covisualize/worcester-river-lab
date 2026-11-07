@@ -111,6 +111,8 @@ async function open(browser, { path = '/', viewport, device, offline = false, wi
     if (offline) return route.abort('internetdisconnected');
     // 'late': every EA answer takes 1.5 s, so the page paints its placeholders first and the data arrives afterwards.
     if (scenario === 'late') await new Promise(r => setTimeout(r, 1500));
+    // 'veryslow': every EA answer takes 9 s (the EA has done this), so for a while there is nothing at all to show.
+    if (scenario === 'veryslow') await new Promise(r => setTimeout(r, 9000));
     // EA reading history: 'slow' answers after 8 s, 'noreadings' fails fast. Gauge metadata and warnings are untouched.
     if (/\/readings$/.test(new URL(url).pathname)) {
       if (scenario === 'noreadings') return route.abort('failed');
@@ -324,10 +326,26 @@ try {
     assert.notEqual(await slow.page.textContent('#ov-level'), '—', 'a level is shown before any history arrives');
     assert.match(await slow.page.textContent('#live-status'), /Loading readings/);
     assert.ok(await slow.page.evaluate(() => window.__wr.live.floods), 'warnings are shown');
+    // Past the point where a silent EA is called slow (6 s): this EA has answered, so the page must not claim otherwise.
+    await slow.page.waitForTimeout(6500);
+    assert.doesNotMatch(await slow.page.textContent('#ov-summary'), /taking longer than usual/);
+    assert.doesNotMatch(await slow.page.textContent('#live-status'), /slow to answer/);
     await slow.page.waitForFunction(() => window.__wr.live.status.mode === 'live' && Object.keys(window.__wr.live.series).length >= 5, null, { timeout: 30000 });
     assert.match(await slow.page.textContent('#ov-trend'), /Steady|Rising|Falling/, 'the trend arrives with the history');
   });
   await slow.context.close();
+  const vs = await open(browser, { scenario: 'veryslow' });
+  await step('a silent EA: after a few seconds the page says the wait is the EA\'s, and the notice goes when data arrives', async () => {
+    await vs.page.waitForFunction(() => /taking longer than usual/.test(document.querySelector('#ov-summary').textContent), null, { timeout: 8500 });
+    assert.match(await vs.page.textContent('#live-status'), /EA is slow to answer/);
+    assert.match(await vs.page.textContent('#ov-summary'), /nothing to show yet.*will fill in by itself.*Floodline 0345 988 1188/);
+    assert.equal(await vs.page.textContent('#ov-level'), '—', 'no number is made up while waiting');
+    await waitLive(vs.page);
+    assert.match(await vs.page.textContent('#ov-summary'), /^The Severn at Diglis is/);
+    assert.match(await vs.page.textContent('#live-status'), /^Live/);
+    assert.deepEqual(vs.errors, []);
+  });
+  await vs.context.close();
   const lazy = await open(browser);
   await step('hovering the Map link starts loading the map library before the click', async () => {
     await waitLive(lazy.page);
