@@ -13,7 +13,7 @@ const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
 const compressible = new Set(['.html', '.js', '.css', '.json', '.geojson', '.svg', '.txt']);
 
 export function serve(port = Number(process.env.PORT) || 8080, { root = defaultRoot, gzip = false } = {}) {
-  const zipped = new Map(); // compressed once per file: this is a measuring tool, so the server's own CPU time must not show up in the numbers
+  const zipped = new Map(); // compressed once per file (and again if its contents change): this is a measuring tool, so the server's own CPU time must not show up in the numbers
   const server = createServer(async (req, res) => {
     try {
       let path = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname)).replace(/^(\.\.[/\\])+/, '');
@@ -22,8 +22,9 @@ export function serve(port = Number(process.env.PORT) || 8080, { root = defaultR
       let body = await readFile(file);
       const headers = { 'Content-Type': types[extname(file)] || 'application/octet-stream' };
       if (gzip && compressible.has(extname(file)) && /gzip/.test(req.headers['accept-encoding'] || '')) {
-        if (!zipped.has(file)) zipped.set(file, gzipSync(body));
-        body = zipped.get(file);
+        const cached = zipped.get(file);
+        if (!cached || !cached.source.equals(body)) zipped.set(file, { source: body, data: gzipSync(body) }); // compare contents, not timestamps: a rebuilt file must never be served stale
+        body = zipped.get(file).data;
         headers['Content-Encoding'] = 'gzip';
       }
       res.writeHead(200, headers);
