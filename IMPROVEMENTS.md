@@ -39,6 +39,12 @@ Anything broken here takes priority over the backlog.
       Moto G Power, 4x CPU slowdown, slow 4G). Remaining findings on 5 Nov: LCP about 3 s live (6 s on an
       uncompressed local server), 25 KiB unused JavaScript, main-thread style/layout work. GitHub Pages sets the
       cache lifetime, so "efficient cache lifetimes" cannot be fixed here.
+      Tried and not shipped (2026-11-08): `<link rel="modulepreload">` for the 14 modules of js/main.js (the browser
+      otherwise finds the import graph level by level). Real throttled timing, gzip server, 6-8 runs: first EA call
+      1.29 → 0.85 s and river level on screen 2.0 → 1.6 s (-0.44 s), but first paint of the empty shell 0.46 → 0.58 s;
+      Lighthouse mobile (gzip) shows no gain (LCP and TTI 2.9 s both ways) and a later FCP (1.1-1.3 → 1.6-1.7 s), score
+      95-96 → 92-95. `preconnect` to the EA added nothing. `fetchpriority="low"` on the hints did not recover the paint.
+      A real-phone or HTTP/2 result could differ; measure with `scripts/measure-load.mjs` before trying again.
 - [x] Warnings near Worcester (EA flood areas within 12 km) vs elsewhere in the 40 km search:
       only local ones colour the Overview verdict.
 - [x] Flood info drawer and header badge: warnings tagged "near Worcester" or "elsewhere".
@@ -49,6 +55,11 @@ Anything broken here takes priority over the backlog.
       (EA `/id/floods` includes severity 4 "no longer in force").
 - [ ] Upstream travel-time explorer: cross-correlate Bewdley → Diglis level changes over
       recent events to show the *observed* lag range (descriptive, not a forecast).
+      Checked 2026-11-08: the live feed's last 28 days (15-minute data) contain one real upstream-driven rise
+      (23-31 Oct; Bewdley peak 27 Oct 01:15, Diglis 06:00 later) and a small one on 18 Oct whose Diglis peak came
+      1.8 h after Bewdley's (local rain, not the same water). A "typical lag" from that would be one event
+      presented as a pattern. Needs a longer 15-minute history with many events (check whether the EA Hydrology
+      API can supply years of 15-minute Bewdley and Diglis data) and a minimum number of events before it shows a number.
 - [x] Flow data, step 1: the map panel shows the EA's latest flow (m³/s, with time) for the gauges that
       publish it (Bewdley, Saxons Lode), labelled as EA-reported (see 2026-11-01).
 - [ ] Flow data, step 2: flow history as an Explore measure; needs the flow readings endpoint, a
@@ -68,6 +79,21 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-11-08 — daily/2026-11-08-measure-load — Health: site live on desktop+mobile, no console errors, both
+  runs clean; all 7 gauges current (20 min; Bransford 95 min, under the 2 h flag); no warnings in force; last
+  deploy green (#24); weekly refresh runs Monday; open PR: #26 (untouched; this branch is from main). Change:
+  no site change today, because the two ideas I measured did not clear the bar. (1) Upstream travel-time
+  explorer: the data can't support it yet (see that backlog item: one real event in 28 days, and the second
+  rise gave 1.8 h against the first's 6.0 h). (2) `modulepreload` for the app's modules: faster data (-0.44 s)
+  but a later first paint, and Lighthouse sees no gain (see "Performance, next"). Two instruments disagreeing
+  with a measurable cost is not an improvement, so nothing was shipped. What is kept: `scripts/serve.mjs` can
+  now serve gzip (`--gzip`, like GitHub Pages) and another copy of the site (`--dir`), and the new
+  `scripts/measure-load.mjs A B [runs]` compares two copies under slow-4G throttling (first paint, first EA
+  call, river level on screen; medians of interleaved runs), which reproduced the numbers above. Method notes:
+  Playwright's `route.fulfill` skips the throttling for the page's own files and Playwright's `proxy` option
+  forces localhost through the proxy, so the harness uses real local servers and Chromium's own proxy flags;
+  an uncompressed server exaggerates the cost of extra files (Lighthouse FCP +0.6 s there, +0.5 s with gzip,
+  Lighthouse score 76 → 74 and 95 → 92-95).
 - 2026-11-06 — daily/2026-11-06-print — Health: site live on desktop+mobile, no console errors; all 7 gauges
   current (20 min; Bransford 50 min); no warnings in force; last deploy green, weekly refresh runs Monday;
   PRs #22, #23 and #24 are still open and untouched (branched from main, the change avoids the files they
