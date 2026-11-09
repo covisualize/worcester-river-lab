@@ -84,6 +84,16 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-11-09 — ccr-a935da98-tkn87x (owner request: graphical and design improvements) — "The river at a glance": a
+  schematic above the station cards with the gauges in the order the water passes them, the Teme joining the Severn below
+  Diglis, and at each gauge a bar from its EA typical low to typical high filled to the latest reading (a line above the
+  bar when the reading is over the typical high), with the level, trend and range words. It draws only what the cards
+  already state (an e2e step compares the two), says "No data" where there is none, fades a delayed reading, and its caption
+  says it is a diagram, not a map, with nothing to scale. Left-to-right on wide screens, top-to-bottom below 900 px; colours
+  come from the theme variables; a text alternative lists every gauge. Looked at with live EA data (light, dark, phone,
+  tablet) and with the February 2020 demo replay for the high-water case. Tests: 7 unit, 2 e2e; axe audits and the
+  layout-shift limits still pass (phone 0.047, desktop 0.024). Not done: clicking a gauge in the diagram (the cards have
+  the Map and Explore buttons); the diagram is not in the saved picture or on the Map view.
 - 2026-11-09 — daily/2026-11-09-share-image — Health: site live on desktop+mobile, no console errors, no horizontal
   overflow; all 7 gauges current (23 min); no warnings in force; EA shapes unchanged (station, latest readings, floods,
   flow measure); the 8 Nov PRs (#26 slow-EA notice, #27 measuring tools) are merged and live (the notice text is in the
