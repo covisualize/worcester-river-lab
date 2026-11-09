@@ -605,6 +605,37 @@ body:has(#live-status[data-mode="loading"]) #ov-trend { min-width: 12.25em; }
 body:has(#live-status[data-mode="loading"]) .hero-warnline { align-items: flex-start; }
 body:has(#live-status[data-mode="loading"]) .hero-warnline i { margin-top: .5em; }
 
+/* The river at a glance (js/river-strip.js). Two drawings: left-to-right for wide screens, top-to-bottom for narrow ones. */
+.river-strip { margin: 4px 0 18px; padding: 14px 16px 12px; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(180deg, color-mix(in srgb, var(--water) 6%, var(--surface)), var(--surface)); }
+.river-strip figcaption { margin-top: 8px; max-width: 860px; }
+#st-river { aspect-ratio: 1040 / 290; }
+.rs { display: block; width: 100%; height: auto; overflow: visible; }
+.rs-tall { display: none; }
+.rs text { font-family: inherit; fill: var(--text); }
+.rs-river { fill: none; stroke: color-mix(in srgb, var(--water) 55%, var(--surface)); stroke-width: 12; stroke-linecap: round; stroke-linejoin: round; }
+.rs-teme { stroke-width: 8; }
+.rs-arrow { fill: color-mix(in srgb, var(--water) 55%, var(--surface)); }
+.rs-label { font-size: 10.5px; font-weight: 600; letter-spacing: .12em; fill: var(--muted) !important; }
+.rs-stem { stroke: var(--muted); stroke-width: 1.5; fill: none; opacity: .6; }
+.rs-meter { fill: var(--surface2); stroke: var(--muted); stroke-width: 1; }
+.rs-fill { fill: var(--water); }
+.rs-node[data-k="low"] .rs-fill { fill: var(--fall); }
+.rs-node[data-k="high"] .rs-fill { fill: var(--rise); }
+.rs-over { stroke: var(--rise); stroke-width: 3; stroke-linecap: round; }
+.rs-dot { fill: var(--surface); stroke: var(--water); stroke-width: 3; }
+.rs-node.is-primary .rs-dot { fill: var(--water); stroke: var(--surface); }
+.rs-name { font-size: 13.5px; font-weight: 600; }
+.rs-node.is-primary .rs-name { font-weight: 800; }
+.rs-val { font-size: 13px; fill: var(--muted) !important; }
+.rs-num { font-weight: 700; fill: var(--text); font-variant-numeric: tabular-nums; }
+.rs-words { font-size: 12px; fill: var(--muted) !important; }
+.rs-node.is-delayed { opacity: .6; }
+@media (max-width: 900px) {
+  #st-river { aspect-ratio: 360 / 640; max-width: 420px; }
+  .rs-wide { display: none; }
+  .rs-tall { display: block; }
+}
+
 @media print {
   .topbar, .bottom-nav, .drawer, .scrim, .tools, .map-shell { display: none !important; }
   body { background: #fff; color: #000; }

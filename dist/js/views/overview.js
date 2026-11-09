@@ -5,6 +5,7 @@ import {
   change, currentRate, trend, rangePosition, rangeWords, freshness, verdict, splitWarnings, warningCount, rateSeries, breakGaps, notable, fmt, toCSV, windowed, time, gaps,
 } from '../data.js';
 import { PRIMARY, STATIONS, SEVERITY, RULES } from '../config.js';
+import { riverStrip } from '../river-strip.js';
 
 export function createOverview(ctx) {
   const { store, live } = ctx;
@@ -254,6 +255,9 @@ export function createOverview(ctx) {
       const rate = currentRate(series);
       return { cfg, st, series, last, rate, pos: rangePosition(last?.[1], st?.scale), c24: change(series, 24), fr: freshness(last?.[0]), order: i };
     });
+    // The diagram is always in river order, whatever the cards are sorted by.
+    const strip = rows.map(r => ({ id: r.cfg.id, label: r.st?.label || r.cfg.label, value: r.last?.[1] ?? null, pos: r.pos, trend: trend(r.rate), primary: !!r.cfg.primary, delayed: r.fr.key === 'stale', note: r.st?.error }));
+    $('#st-river').innerHTML = riverStrip(strip, 'wide') + riverStrip(strip, 'tall');
     const sorters = { river: (a, b) => a.order - b.order, range: (a, b) => (b.pos.pct ?? -1e9) - (a.pos.pct ?? -1e9), rate: (a, b) => Math.abs(b.rate ?? 0) - Math.abs(a.rate ?? 0) };
     rows.sort(sorters[sortKey]);
     $('#st-grid').innerHTML = rows.map(r => {

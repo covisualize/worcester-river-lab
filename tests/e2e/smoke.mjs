@@ -160,6 +160,20 @@ try {
     assert.ok(!(await page.textContent('main')).includes('NaN'));
   });
 
+  await step('river diagram: all 7 gauges in river order with the same readings as the cards, and a text alternative', async () => {
+    assert.ok(await page.isVisible('#st-river .rs-wide') && await page.isHidden('#st-river .rs-tall'), 'the left-to-right drawing on a wide screen');
+    assert.equal(await page.locator('#st-river .rs-wide .rs-node').count(), 7);
+    const shown = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#st-river .rs-wide .rs-node')].map(n => [n.dataset.id, n.querySelector('.rs-num')?.textContent])));
+    const cards = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#st-grid .station')].map(c => [c.dataset.id, c.querySelector('.station-val').firstChild.textContent.trim() + ' m'])));
+    assert.deepEqual(shown, cards, 'the diagram and the cards state the same levels');
+    assert.equal(shown['2085'], `${latest.value.toFixed(2)} m`);
+    assert.match(await page.getAttribute('#st-river .rs-wide', 'aria-label'), /River Severn, upstream to downstream: Bewdley .* River Teme, which joins the Severn below Diglis: Knightsford Bridge /);
+    assert.match(await page.textContent('.river-strip figcaption'), /A diagram, not a map: nothing is to scale/);
+    await page.click('#st-sort [data-sort="rate"]');
+    assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('#st-river .rs-wide .rs-node')].map(n => n.dataset.id)), ['2001', '2642', '2085', '2616', '2032', '2029', '2086'], 'sorting the cards does not reorder the river');
+    await page.click('#st-sort [data-sort="river"]');
+  });
+
   await step('printing: a dated stamp, no dead buttons, and the chart drawn at the page width', async () => {
     await page.waitForSelector('#tl-chart canvas');
     const wide = await page.evaluate(() => document.querySelector('#tl-chart').getBoundingClientRect().width);
@@ -703,6 +717,14 @@ try {
       assert.ok(over <= 1, `overflows by ${over}px`);
     });
   }
+  await step('river diagram on a phone: the top-to-bottom drawing, inside the screen', async () => {
+    await mob.page.click('.bottom-nav [data-nav="overview"]');
+    await mob.page.waitForSelector('#st-river .rs-tall .rs-node');
+    assert.ok(await mob.page.isVisible('#st-river .rs-tall') && await mob.page.isHidden('#st-river .rs-wide'));
+    assert.equal(await mob.page.locator('#st-river .rs-tall .rs-node').count(), 7);
+    const fit = await mob.page.evaluate(() => { const w = document.documentElement.clientWidth; return [...document.querySelectorAll('#st-river .rs-tall text')].map(t => Math.round(t.getBoundingClientRect().right)).filter(r => r > w); });
+    assert.deepEqual(fit, [], 'no label runs off the screen');
+  });
   await step('mobile overview: a card\'s "cm / 24 h" change never splits across lines', async () => {
     await mob.page.setViewportSize({ width: 320, height: 700 });
     await mob.page.click('.bottom-nav [data-nav="overview"]');
