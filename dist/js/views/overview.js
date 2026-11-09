@@ -1,15 +1,16 @@
 // Overview: the "five-second" command centre for the primary gauge.
-import { $, $$, h, esc, countTo, mountChart, loadECharts, download, setBusy, errorBox } from '../ui.js';
+import { $, $$, h, esc, countTo, mountChart, loadECharts, download, downloadBlob, toast, setBusy, errorBox } from '../ui.js';
 import { timeSeriesOption, gaugeSVG, sparkline } from '../charts.js';
 import {
   change, currentRate, trend, rangePosition, rangeWords, freshness, verdict, splitWarnings, warningCount, rateSeries, breakGaps, notable, fmt, toCSV, windowed, time, gaps,
+  imageFooter, imageFileName,
 } from '../data.js';
 import { PRIMARY, STATIONS, SEVERITY, RULES } from '../config.js';
 import { riverStrip } from '../river-strip.js';
 
 export function createOverview(ctx) {
   const { store, live } = ctx;
-  let chart, sortKey = 'river', reqId = 0, lastWindow = null;
+  let chart, sortKey = 'river', reqId = 0, lastWindow = null, lastDraw = null; // lastDraw: what the timeline shows, for its saved picture
 
   // The timeline chart needs ECharts, which is not run at startup (it is the biggest piece of start-up work on a phone). It is loaded
   // when the timeline panel is about to scroll into view, which on a desktop screen is straight away.
@@ -50,6 +51,7 @@ export function createOverview(ctx) {
       download(`diglis-${store.get().range}.csv`, toCSV(['timestamp_utc', 'uk_local_time', 'station', 'level_m_asd'],
         lastWindow.flatMap(s => s.raw.map(([t, v]) => [new Date(t).toISOString(), fmt.full(t), s.name, v]))));
     };
+    $('#tl-png').onclick = saveTimelineImage;
     $('#tl-explore').onclick = () => ctx.go('explore', { compare: $('#tl-upstream').checked ? ['2001', PRIMARY] : [PRIMARY] });
     $('#ov-warn-open').onclick = () => ctx.openIntel();
     $$('#view-overview [data-go]').forEach(a => (a.onclick = e => { e.preventDefault(); ctx.go(a.dataset.go); }));
@@ -206,6 +208,37 @@ export function createOverview(ctx) {
 
   /* ---------- Timeline ---------- */
 
+  // "Save image": the chart as a PNG that carries its own title, period, source and date (see chart-image.js). The picture module is
+  // fetched on the first click, so it adds nothing to the page's start-up.
+  async function saveTimelineImage() {
+    let chartPicture;
+    try {
+      ({ chartPicture } = await import('../chart-image.js'));
+    } catch {
+      toast('The picture code could not be loaded. Check your connection and try again.', 'error');
+      return;
+    }
+    // The module may have taken a while to arrive (the first click), and the chart can change meanwhile (another range, the Bewdley
+    // comparison). So nothing about the chart is read until now, and from here to the chartPicture() call nothing waits (that call
+    // takes the chart's pixels before its first await): the picture and its caption always come from the same drawing.
+    const main = lastWindow?.find(x => x.id === PRIMARY);
+    if (!chart?.chart || !main || !lastDraw) { toast('The chart is not ready yet. Try again in a moment.'); return; }
+    if (!main.raw.length) { toast('There are no readings in this chart to save a picture of.'); return; } // e.g. an offline snapshot that is older than the range
+    const st = live.status, now = Date.now(), name = live.station(PRIMARY)?.label || 'Diglis';
+    const { label, compare, range } = lastDraw, end = main.raw.at(-1)[0];
+    try {
+      const blob = await chartPicture(chart.chart, {
+        T: ctx.T,
+        title: compare ? `River level change since the start of the period: Bewdley (upstream) and ${name}` : `River Severn at ${name}, Worcester`,
+        subtitle: `${label}, ${fmt.dateTime(main.raw[0][0])} to ${fmt.dateTime(end)} (${fmt.zone(end)}) · ${compare ? 'change in cm' : 'metres above station datum'} · UK time`,
+        footer: imageFooter({ mode: st.mode, snapshotAt: st.snapshotAt, last: live.latestOf(PRIMARY), now }),
+      });
+      downloadBlob(imageFileName({ range, mode: st.mode, now }), blob);
+    } catch (e) {
+      toast(e.message || 'The picture could not be made.', 'error');
+    }
+  }
+
   async function drawTimeline() {
     const id = ++reqId;
     const s = store.get();
@@ -224,6 +257,7 @@ export function createOverview(ctx) {
         return { id: sid, name: st.label, raw, color: ctx.colorOf(sid), data: breakGaps(ctx.transformFor(raw, metric, st)), highlight: sid === PRIMARY };
       });
       lastWindow = series;
+      lastDraw = { label, compare, range: s.range };
       const main = series.find(x => x.id === PRIMARY);
       const sc = live.primary()?.scale;
       if (!main.raw.length) { chart?.set({}); $('#tl-note').textContent = `No readings for ${label}.`; return; }

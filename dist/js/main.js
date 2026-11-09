@@ -3,7 +3,7 @@ import { $, $$, esc, setDemoExport, tokens, reducedMotion, toggleFullscreen, toa
 import { createStore, decode, VIEWS } from './store.js';
 import { createLive } from './live.js';
 import { STATIONS, RANGES, PRIMARY, FLOODLINE } from './config.js';
-import { transform, lttb, fmt, freshness, delayedGauges, ukDayStart, ukDateInput, time } from './data.js';
+import { transform, lttb, fmt, freshness, delayedGauges, ukDayStart, ukDateInput, time, dataBasis, MAY_HAVE_CHANGED } from './data.js';
 import { createOverview } from './views/overview.js';
 import { createMapView } from './views/map.js';
 import { createAnalysis } from './views/analysis.js';
@@ -244,17 +244,15 @@ matchMedia('(prefers-reduced-motion: reduce)').addEventListener?.('change', e =>
 /* ---------- Printing ---------- */
 
 // A printout is read later, when "21 min ago" and "Up to date" are no longer true, so it says when it was made, which reading it
-// shows, and where the official warnings are.
+// shows, and where the official warnings are (the wording is shared with the saved chart picture: see data.js).
 function stampPrint() {
-  const st = live.status, last = live.latestOf(PRIMARY), snapAt = st.snapshotAt; // epoch ms, or null
-  const basis = st.mode === 'demo' ? 'DEMO REPLAY of February 2020: illustrative, not current conditions.'
-    : st.mode === 'snapshot' ? `Saved offline snapshot${Number.isFinite(snapAt) ? ` taken ${fmt.full(snapAt)}` : ''}: not current conditions.`
-    : last ? `Latest Diglis reading: ${fmt.full(last[0])}.` : 'No Diglis reading was available.';
+  const st = live.status;
+  const basis = dataBasis({ mode: st.mode, snapshotAt: st.snapshotAt, last: live.latestOf(PRIMARY) });
   // The Overview timeline only loads its charting library when it nears the screen (a phone that has not scrolled to it), and a print
   // cannot wait for that: say so rather than print an empty box, and start the load so printing again works.
   const chartMissing = store.get().view === 'overview' && !$('#tl-chart canvas');
   if (chartMissing) views.overview.ensureChart();
-  $('#print-stamp').textContent = `Worcester River Lab (unofficial summary of Environment Agency data) · printed ${fmt.full(Date.now())}. ${basis}${chartMissing ? ' The timeline chart had not loaded when this was printed.' : ''} Readings and warnings may have changed since: for official flood warnings use GOV.UK Check for flooding or call Floodline ${FLOODLINE}.`;
+  $('#print-stamp').textContent = `Worcester River Lab (unofficial summary of Environment Agency data) · printed ${fmt.full(Date.now())}. ${basis}${chartMissing ? ' The timeline chart had not loaded when this was printed.' : ''} ${MAY_HAVE_CHANGED}`;
 }
 // The charts are drawn for the screen's width; draw them again at the page's width before the browser lays the page out, and back afterwards.
 addEventListener('beforeprint', () => { stampPrint(); document.documentElement.classList.add('is-printing'); resizeAll(); });
