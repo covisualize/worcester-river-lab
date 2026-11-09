@@ -104,6 +104,10 @@ async function open(browser, { path = '/', viewport, device, offline = false, wi
       if (scenario === 'noleaflet' && p.endsWith('/vendor/leaflet/leaflet.js') && leafletHits++ < 2) return route.abort('failed');
       // 'noecharts': the charting library fails on its first two requests only (the early preload counts as one), so a retry can succeed.
       if (scenario === 'noecharts' && p.endsWith('/vendor/echarts.slim.min.js') && echartsHits++ < 2) return route.abort('failed');
+      // 'slowpicture': the code that makes "Save image" pictures takes 1.5 s to arrive, so the chart can change while it loads.
+      if (scenario === 'slowpicture' && p.endsWith('/js/chart-image.js')) await new Promise(r => setTimeout(r, 1500));
+      // 'nopicture': that code cannot be fetched at all (the connection dropped after the page loaded).
+      if (scenario === 'nopicture' && p.endsWith('/js/chart-image.js')) return route.abort('failed');
       // 'nocss': the script loads but the stylesheet fails once; a retry must fetch the stylesheet again.
       if (scenario === 'nocss' && p.endsWith('/vendor/leaflet/leaflet.css') && leafletCssHits++ < 1) return route.abort('failed');
       try { return route.fulfill({ body: await readFile(join(root, p)), contentType: types[extname(p)] || 'application/octet-stream' }); } catch { return route.fulfill({ status: 404 }); }
@@ -134,6 +138,50 @@ async function open(browser, { path = '/', viewport, device, offline = false, wi
 }
 
 const waitLive = page => page.waitForFunction(() => window.__wr?.live.status.mode === 'live', null, { timeout: 20000 });
+
+// Click "Save image" on the Overview timeline and return what came out: the file name, every string drawn on a canvas while the
+// picture was made (the text cannot be read back out of a PNG), and a description of the PNG itself, decoded in the page.
+// `during`, if given, runs right after the click, while the picture is still being made.
+async function saveImage(page, { during } = {}) {
+  await page.waitForFunction(() => document.querySelector('#tl-chart canvas') && /readings/.test(document.querySelector('#tl-note').textContent), null, { timeout: 10000 }).catch(async e => {
+    const seen = await page.evaluate(() => ({ canvases: document.querySelectorAll('#tl-chart canvas').length, note: document.querySelector('#tl-note').textContent, mode: window.__wr?.live.status.mode, view: location.search }));
+    throw new Error(`the timeline never showed its chart and readings: ${JSON.stringify(seen)}`);
+  });
+  await page.evaluate(() => {
+    window.__drawn = [];
+    window.__fillText = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function (t, ...a) { window.__drawn.push(String(t)); return window.__fillText.call(this, t, ...a); };
+  });
+  try {
+    const downloading = page.waitForEvent('download', { timeout: 10000 });
+    downloading.catch(() => {}); // if `during` fails first, this must not become an unhandled rejection; the await below still reports it
+    await page.click('#tl-png');
+    await during?.();
+    const download = await downloading;
+    const bytes = await readFile(await download.path());
+    const drawn = await page.evaluate(() => window.__drawn.join(' '));
+    // How many different colours there are in a strip: text on a plain background has many (anti-aliasing), an empty strip has one.
+    const picture = await page.evaluate(async b64 => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${b64}`;
+      await img.decode();
+      const c = Object.assign(document.createElement('canvas'), { width: img.width, height: img.height }), x = c.getContext('2d');
+      x.drawImage(img, 0, 0);
+      const colours = (y, h) => { const d = x.getImageData(0, y, img.width, h).data, s = new Set(); for (let i = 0; i < d.length; i += 4) s.add((d[i] << 16) | (d[i + 1] << 8) | d[i + 2]); return s.size; };
+      return { width: img.width, height: img.height, header: colours(0, 70), middle: colours(Math.round(img.height / 2) - 20, 40), footer: colours(img.height - 90, 90) };
+    }, bytes.toString('base64'));
+    return { name: download.suggestedFilename(), bytes, drawn, picture };
+  } finally {
+    await page.evaluate(() => { CanvasRenderingContext2D.prototype.fillText = window.__fillText; });
+  }
+}
+// The UK date and time as in the picture's file name, worked out here independently of the site's own code.
+const ukStamp = ms => {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(ms).map(x => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}-${p.hour}${p.minute}`;
+};
+const PNG_SIGNATURE = '89504e470d0a1a0a';
+
 const results = [];
 const step = async (name, fn) => {
   try { await fn(); results.push(`  ✓ ${name}`); } catch (e) { results.push(`  ✗ ${name}\n    ${e.message.split('\n').slice(0, 12).join('\n    ')}`); process.exitCode = 1; }
@@ -171,7 +219,7 @@ try {
       assert.match(stamp, /unofficial summary of Environment Agency data\) · printed \w{3}, \d+ \w{3} \d{4}, \d\d:\d\d (GMT|BST)\. Latest Diglis reading: \w{3}, \d+ \w{3} \d{4}, \d\d:\d\d (GMT|BST)\./);
       assert.match(stamp, /official flood warnings use GOV\.UK Check for flooding or call Floodline 0345 988 1188/);
       assert.ok(await page.isVisible('#print-stamp'));
-      for (const hidden of ['#ov-warn-open', '#tl-csv', '#tl-explore', '#tl-range', '.toggle-row', '.explain', '#st-grid .station .btn']) {
+      for (const hidden of ['#ov-warn-open', '#tl-csv', '#tl-png', '#tl-explore', '#tl-range', '.toggle-row', '.explain', '#st-grid .station .btn']) {
         assert.ok(await page.locator(hidden).first().isHidden(), `${hidden} is not printed`);
       }
       assert.equal(await page.locator('.kpi:visible').count(), 6, 'the figures are printed');
@@ -187,6 +235,38 @@ try {
     await page.waitForFunction(w => document.querySelector('#tl-chart').getBoundingClientRect().width > w, 700, { timeout: 5000 });
     assert.ok(await page.isHidden('#print-stamp'), 'the stamp is for paper only');
     assert.ok(await page.isVisible('#tl-csv'), 'controls are back on screen');
+  });
+
+  await step('save image: a PNG of the chart with its title, period, source, save time and where the official warnings are', async () => {
+    assert.ok(!requested.some(p => p.endsWith('/js/chart-image.js')), 'the picture code is not part of the page start-up');
+    const shot = await saveImage(page);
+    assert.ok(requested.some(p => p.endsWith('/js/chart-image.js')), 'it is fetched when someone asks for a picture');
+    assert.equal(shot.name, `diglis-24h-chart-${ukStamp(NOW)}.png`);
+    assert.equal(shot.bytes.subarray(0, 8).toString('hex'), PNG_SIGNATURE, 'a real PNG');
+    const { width, height, header, middle, footer } = shot.picture;
+    assert.ok(width >= 1400 && height >= 700, `a picture you can share (${width} x ${height})`);
+    assert.ok(header > 3 && footer > 3, `text above and below the chart, not blank strips (colours: header ${header}, footer ${footer})`);
+    assert.ok(middle > 3, `the chart itself is in the middle (${middle} colours)`);
+    assert.match(shot.drawn, /River Severn at Diglis, Worcester/);
+    assert.match(shot.drawn, /Last 24 hours, .+ \((GMT|BST)\) · metres above station datum · UK time/);
+    assert.match(shot.drawn, new RegExp(`Latest Diglis reading: \\w{3}, \\d+ \\w{3} \\d{4}, \\d\\d:\\d\\d (GMT|BST)\\. Saved \\w{3}, \\d+ \\w{3} \\d{4}, \\d\\d:\\d\\d (GMT|BST)\\.`));
+    assert.match(shot.drawn, /unofficial summary of Environment Agency real-time data \(Open Government Licence v3\)/);
+    assert.match(shot.drawn, /official flood warnings use GOV\.UK Check for flooding or call Floodline 0345 988 1188/);
+    assert.doesNotMatch(shot.drawn, /DEMO|snapshot/i, 'live data is not labelled as either');
+    assert.match(await page.textContent('#toasts'), /Downloaded diglis-24h-chart-/);
+  });
+
+  await step('save image: the compare view says what it shows, and the picture follows the range', async () => {
+    await page.click('#tl-range [data-range="7d"]');
+    await page.check('#tl-upstream');
+    await page.waitForFunction(() => /Bewdley/.test(document.querySelector('#tl-sub').textContent) && /Last 7 days/.test(document.querySelector('#tl-note').textContent));
+    const shot = await saveImage(page);
+    assert.equal(shot.name, `diglis-7d-chart-${ukStamp(NOW)}.png`);
+    assert.match(shot.drawn, /River level change since the start of the period: Bewdley \(upstream\) and Diglis/);
+    assert.match(shot.drawn, /Last 7 days, .+ · change in cm · UK time/);
+    await page.uncheck('#tl-upstream');
+    await page.click('#tl-range [data-range="24h"]');
+    await page.waitForFunction(() => /Last 24 hours/.test(document.querySelector('#tl-note').textContent));
   });
 
   await step('range switch animates the timeline and updates the URL', async () => {
@@ -650,7 +730,54 @@ try {
     await off.page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
     assert.match(await off.page.textContent('#print-stamp'), /Saved offline snapshot taken .*: not current conditions\./, 'a printed snapshot says it is one');
   });
+  await step('save image: an offline snapshot picture says SNAPSHOT in its text and its name; an empty chart says so instead of saving a blank', async () => {
+    const at = await off.page.evaluate(() => window.__wr.live.status.snapshotAt);
+    assert.ok(Number.isFinite(at), 'the snapshot has a date');
+    // 40 days on, no range (24 h to 30 d) reaches the snapshot's readings: nothing to take a picture of.
+    await off.page.clock.setFixedTime(at + 40 * 24 * 3600e3);
+    await off.page.click('#tl-range [data-range="7d"]');
+    await off.page.waitForFunction(() => /^No readings for/.test(document.querySelector('#tl-note').textContent));
+    await off.page.click('#tl-png');
+    await off.page.waitForSelector('#toasts .toast');
+    assert.match(await off.page.textContent('#toasts'), /There are no readings in this chart to save a picture of\./);
+    // An hour after the snapshot was taken, its last day of readings is in the 24-hour window.
+    await off.page.clock.setFixedTime(at + 3600e3);
+    await off.page.click('#tl-range [data-range="24h"]');
+    const shot = await saveImage(off.page);
+    assert.match(shot.name, /^SNAPSHOT-diglis-24h-chart-\d{4}-\d\d-\d\d-\d{4}\.png$/);
+    assert.match(shot.drawn, /Saved offline snapshot taken .*: not current conditions\. Saved /);
+    assert.doesNotMatch(shot.drawn, /Latest Diglis reading/);
+  });
   await off.context.close();
+
+  /* ---------- Save image while its code is still loading ---------- */
+  const sp = await open(browser, { scenario: 'slowpicture' });
+  await waitLive(sp.page);
+  await step('save image: changing the chart while the picture code loads cannot give one chart another one\'s caption', async () => {
+    const shot = await saveImage(sp.page, {
+      during: async () => {
+        await sp.page.check('#tl-upstream'); // the comparison view, while the 1.5 s load is still running
+        await sp.page.waitForFunction(() => /Bewdley/.test(document.querySelector('#tl-sub').textContent));
+      },
+    });
+    assert.match(shot.drawn, /River level change since the start of the period: Bewdley \(upstream\) and Diglis/);
+    assert.match(shot.drawn, /· change in cm · UK time/);
+    assert.doesNotMatch(shot.drawn, /metres above station datum/, 'a change-in-cm chart is not labelled as metres');
+  });
+  await sp.context.close();
+  const np = await open(browser, { scenario: 'nopicture' });
+  await waitLive(np.page);
+  await step('save image: if the picture code cannot be fetched, the visitor is told plainly and nothing is saved', async () => {
+    await np.page.waitForFunction(() => document.querySelector('#tl-chart canvas'));
+    let saved = false;
+    np.page.on('download', () => { saved = true; });
+    await np.page.click('#tl-png');
+    await np.page.waitForSelector('#toasts .toast-error');
+    assert.match(await np.page.textContent('#toasts'), /The picture code could not be loaded\. Check your connection and try again\./);
+    assert.doesNotMatch(await np.page.textContent('#toasts'), /dynamically imported|Failed to fetch/, 'not the browser\'s own wording');
+    assert.equal(saved, false);
+  });
+  await np.context.close();
 
   /* ---------- Demo replay: real Feb 2020 readings, labelled everywhere ---------- */
   const demo = await open(browser, { path: '/?demo=feb2020' });
@@ -673,6 +800,14 @@ try {
     await demo.page.waitForFunction(() => !document.querySelector('.toast'), null, { timeout: 6000 }).catch(() => {});
     if (process.env.E2E_SHOTS) await demo.page.screenshot({ path: `${process.env.E2E_SHOTS}/demo.png`, fullPage: false });
     assert.deepEqual(await axeViolations(demo.page), []);
+  });
+  await step('save image: a demo replay picture says DEMO in its text and its name, and never offers a latest reading', async () => {
+    const shot = await saveImage(demo.page);
+    assert.match(shot.name, /^DEMO-replay-diglis-24h-chart-\d{4}-\d\d-\d\d-\d{4}\.png$/);
+    assert.match(shot.drawn, /DEMO REPLAY of February 2020: illustrative, not current conditions\. Saved /);
+    assert.doesNotMatch(shot.drawn, /Latest Diglis reading/);
+    assert.match(shot.drawn, /official flood warnings use GOV\.UK/);
+    assert.ok(shot.picture.header > 3 && shot.picture.footer > 3 && shot.picture.middle > 3);
   });
   await step('demo replay: a real flow reading is never shown beside the replayed flood level', async () => {
     await demo.page.click('.primary-nav [data-nav="map"]');
