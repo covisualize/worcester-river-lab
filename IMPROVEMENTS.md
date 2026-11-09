@@ -69,7 +69,12 @@ Anything broken here takes priority over the backlog.
 - [ ] Offline/PWA: cache the shell and last readings so the page opens without signal,
       clearly marked as cached.
 - [x] Print stylesheet: dated stamp, no dead buttons, chart fits the page (see 2026-11-06). It is three A4 pages, not one.
-- [ ] Shareable PNG/CSV of any chart view (the Overview timeline already has CSV).
+- [ ] Shareable PNG/CSV of any chart view. Step 1 done (2026-11-09): the Overview timeline has "Save image", a PNG with a
+      title and period above the chart and, below it, which reading it shows (or that it is a demo or an offline snapshot),
+      when it was saved, that it is unofficial, the EA source and licence, and the official-warnings pointer; a demo or
+      snapshot also says so in the file name. Left: the same for Analysis, Explore and History (`chartPicture()` in
+      `js/chart-image.js` takes any ECharts instance; each chart needs its own title and period lines), and a phone share
+      sheet (`navigator.share` with a file), which needs a real phone to test.
 - [x] Data-quality panel, step 1: per-gauge completeness for the last 24 h in the Flood info drawer's "Data
       confidence" section (readings received of 96, longest gap), see 2026-11-03.
 - [ ] Data-quality panel, step 2: completeness for the window chosen in Explore, and for the Hydrology archive.
@@ -79,6 +84,28 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-11-09 — daily/2026-11-09-share-image — Health: site live on desktop+mobile, no console errors, no horizontal
+  overflow; all 7 gauges current (23 min); no warnings in force; EA shapes unchanged (station, latest readings, floods,
+  flow measure); the 8 Nov PRs (#26 slow-EA notice, #27 measuring tools) are merged and live (the notice text is in the
+  deployed main.js); deploys of both green, the Monday weekly refresh (run 6) and the deploy it triggered green (it changed
+  only the offline snapshot); no open PRs. Change: the Overview timeline gets "Save image". A bare screenshot of a river
+  level carries no date, source or "unofficial" note, and these pictures get pasted into group chats, so the PNG has a title and
+  the period above the chart and, below it: the latest Diglis reading it shows (or DEMO REPLAY, or the offline snapshot's
+  date, whichever applies), when it was saved, "unofficial summary of Environment Agency real-time data (Open Government
+  Licence v3)", and the GOV.UK / Floodline pointer; a demo or snapshot also says so in the file name
+  (`DEMO-replay-…`, `SNAPSHOT-…`). The zoom slider is left out (in a still picture it looks like a control that does
+  nothing). The "which reading / is it current" sentence used to live inside the print stamp: it is now `dataBasis()` in
+  data.js and the print stamp and the picture both use it, so they cannot disagree (the printout's text is unchanged,
+  covered by the existing print tests). The picture code (`js/chart-image.js`) is fetched on the first click, so the page's
+  start-up is unchanged. Tests: 8 unit (wording for live/demo/snapshot/no reading, file names including BST, text wrapping)
+  and 4 e2e steps that really click, receive the download and decode the PNG (signature, size, text in the header and footer
+  strips, chart in the middle) and capture every string drawn on the canvas, for live, compare view, demo replay and an
+  offline snapshot. Negative control: sending `mode: 'live'` whatever the real mode, and dropping the warnings line, made the
+  live, demo and snapshot steps fail. Found by the snapshot test: an offline snapshot is days old, so the 24-hour chart is
+  empty ("No readings for Last 24 hours") and the first version of the button said "not ready yet"; it now says there are no
+  readings to save a picture of. Limits: checked in Chromium (desktop and phone emulation, light and dark) against the live
+  EA, not on a real iPhone or Android; a phone share sheet is not done; the picture shows the chart as drawn, including its
+  annotation pins (on a phone one can sit over the "EA typical range" label, as on screen).
 - 2026-11-08 — daily/2026-11-08-measure-load — Health: site live on desktop+mobile, no console errors, both
   runs clean; all 7 gauges current (20 min; Bransford 95 min, under the 2 h flag); no warnings in force; last
   deploy green (#24); weekly refresh runs Monday; open PR: #26 (untouched; this branch is from main). Change:

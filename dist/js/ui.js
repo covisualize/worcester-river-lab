@@ -106,16 +106,21 @@ export function toast(message, kind = 'info') {
 let demoExport = null; // { id, shift } while a demo replay is showing
 export const setDemoExport = d => (demoExport = d);
 
-export function download(name, text, type = 'text/csv') {
-  const marked = demoExport && type === 'text/csv' ? markDemoCSV(text, demoExport.shift) : null;
-  if (marked) { name = `DEMO-${demoExport.id}-${name}`; text = marked; }
-  const url = URL.createObjectURL(new Blob([text], { type }));
+// Save a Blob as a file. (A demo replay marks its own files: CSVs through download() below, pictures by saying so in the picture and its name.)
+export function downloadBlob(name, blob) {
+  const url = URL.createObjectURL(blob);
   const a = Object.assign(document.createElement('a'), { href: url, download: name });
   document.body.append(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1500);
   toast(`Downloaded ${name}`, 'ok');
+}
+
+export function download(name, text, type = 'text/csv') {
+  const marked = demoExport && type === 'text/csv' ? markDemoCSV(text, demoExport.shift) : null;
+  if (marked) { name = `DEMO-${demoExport.id}-${name}`; text = marked; }
+  downloadBlob(name, new Blob([text], { type }));
 }
 
 export async function copyLink(url = location.href) {

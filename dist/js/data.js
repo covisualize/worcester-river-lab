@@ -1,6 +1,6 @@
 // Pure data functions: no DOM, no network. Every series is an ascending array
 // of [epochMs, value] pairs. Unit tested in tests/unit/data.test.js.
-import { RULES, TZ } from './config.js';
+import { RULES, TZ, FLOODLINE } from './config.js';
 
 const MIN = 60 * 1000;
 const HOUR = 60 * MIN;
@@ -466,4 +466,33 @@ export function markDemoCSV(text, shiftMs) {
 export function toCSV(header, rows) {
   const esc = v => (v == null ? '' : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
   return [header.join(','), ...rows.map(r => r.map(esc).join(','))].join('\n');
+}
+
+/* ---------- Things that leave the page: printouts and saved pictures ---------- */
+
+// A printout or a picture is looked at later and away from the page, so "21 min ago" and "Up to date" are no longer true and nothing
+// around it says what it is. These say it: which reading it shows, or that it is a demo or an old snapshot, and where the official
+// warnings are. The print stamp and the saved chart picture use the same wording, so they cannot disagree.
+// `last` is the latest Diglis reading as [epochMs, value] or null; `snapshotAt` is epoch ms or null.
+export function dataBasis({ mode, snapshotAt, last }) {
+  if (mode === 'demo') return 'DEMO REPLAY of February 2020: illustrative, not current conditions.';
+  if (mode === 'snapshot') return `Saved offline snapshot${Number.isFinite(snapshotAt) ? ` taken ${fmt.full(snapshotAt)}` : ''}: not current conditions.`;
+  return last ? `Latest Diglis reading: ${fmt.full(last[0])}.` : 'No Diglis reading was available.';
+}
+
+export const MAY_HAVE_CHANGED = `Readings and warnings may have changed since: for official flood warnings use GOV.UK Check for flooding or call Floodline ${FLOODLINE}.`;
+
+// The lines under a saved chart picture (the title and period go above it).
+export function imageFooter({ mode, snapshotAt, last, now }) {
+  return [
+    `${dataBasis({ mode, snapshotAt, last })} Saved ${fmt.full(now)}.`,
+    'Worcester River Lab: an unofficial summary of Environment Agency real-time data (Open Government Licence v3).',
+    MAY_HAVE_CHANGED,
+  ];
+}
+
+// File names travel with the picture, so a demo or an old snapshot says so there too.
+export function imageFileName({ range, mode, now }) {
+  const tag = mode === 'demo' ? 'DEMO-replay-' : mode === 'snapshot' ? 'SNAPSHOT-' : '';
+  return `${tag}diglis-${range}-chart-${ukDateInput(now)}-${fmt.time(now).replace(':', '')}.png`;
 }
