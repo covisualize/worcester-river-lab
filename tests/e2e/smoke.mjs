@@ -104,6 +104,10 @@ async function open(browser, { path = '/', viewport, device, offline = false, wi
       if (scenario === 'noleaflet' && p.endsWith('/vendor/leaflet/leaflet.js') && leafletHits++ < 2) return route.abort('failed');
       // 'noecharts': the charting library fails on its first two requests only (the early preload counts as one), so a retry can succeed.
       if (scenario === 'noecharts' && p.endsWith('/vendor/echarts.slim.min.js') && echartsHits++ < 2) return route.abort('failed');
+      // 'slowpicture': the code that makes "Save image" pictures takes 1.5 s to arrive, so the chart can change while it loads.
+      if (scenario === 'slowpicture' && p.endsWith('/js/chart-image.js')) await new Promise(r => setTimeout(r, 1500));
+      // 'nopicture': that code cannot be fetched at all (the connection dropped after the page loaded).
+      if (scenario === 'nopicture' && p.endsWith('/js/chart-image.js')) return route.abort('failed');
       // 'nocss': the script loads but the stylesheet fails once; a retry must fetch the stylesheet again.
       if (scenario === 'nocss' && p.endsWith('/vendor/leaflet/leaflet.css') && leafletCssHits++ < 1) return route.abort('failed');
       try { return route.fulfill({ body: await readFile(join(root, p)), contentType: types[extname(p)] || 'application/octet-stream' }); } catch { return route.fulfill({ status: 404 }); }
@@ -137,7 +141,8 @@ const waitLive = page => page.waitForFunction(() => window.__wr?.live.status.mod
 
 // Click "Save image" on the Overview timeline and return what came out: the file name, every string drawn on a canvas while the
 // picture was made (the text cannot be read back out of a PNG), and a description of the PNG itself, decoded in the page.
-async function saveImage(page) {
+// `during`, if given, runs right after the click, while the picture is still being made.
+async function saveImage(page, { during } = {}) {
   await page.waitForFunction(() => document.querySelector('#tl-chart canvas') && /readings/.test(document.querySelector('#tl-note').textContent), null, { timeout: 10000 }).catch(async e => {
     const seen = await page.evaluate(() => ({ canvases: document.querySelectorAll('#tl-chart canvas').length, note: document.querySelector('#tl-note').textContent, mode: window.__wr?.live.status.mode, view: location.search }));
     throw new Error(`the timeline never showed its chart and readings: ${JSON.stringify(seen)}`);
@@ -148,7 +153,11 @@ async function saveImage(page) {
     CanvasRenderingContext2D.prototype.fillText = function (t, ...a) { window.__drawn.push(String(t)); return window.__fillText.call(this, t, ...a); };
   });
   try {
-    const [download] = await Promise.all([page.waitForEvent('download', { timeout: 10000 }), page.click('#tl-png')]);
+    const downloading = page.waitForEvent('download', { timeout: 10000 });
+    downloading.catch(() => {}); // if `during` fails first, this must not become an unhandled rejection; the await below still reports it
+    await page.click('#tl-png');
+    await during?.();
+    const download = await downloading;
     const bytes = await readFile(await download.path());
     const drawn = await page.evaluate(() => window.__drawn.join(' '));
     // How many different colours there are in a strip: text on a plain background has many (anti-aliasing), an empty strip has one.
@@ -740,6 +749,35 @@ try {
     assert.doesNotMatch(shot.drawn, /Latest Diglis reading/);
   });
   await off.context.close();
+
+  /* ---------- Save image while its code is still loading ---------- */
+  const sp = await open(browser, { scenario: 'slowpicture' });
+  await waitLive(sp.page);
+  await step('save image: changing the chart while the picture code loads cannot give one chart another one\'s caption', async () => {
+    const shot = await saveImage(sp.page, {
+      during: async () => {
+        await sp.page.check('#tl-upstream'); // the comparison view, while the 1.5 s load is still running
+        await sp.page.waitForFunction(() => /Bewdley/.test(document.querySelector('#tl-sub').textContent));
+      },
+    });
+    assert.match(shot.drawn, /River level change since the start of the period: Bewdley \(upstream\) and Diglis/);
+    assert.match(shot.drawn, /· change in cm · UK time/);
+    assert.doesNotMatch(shot.drawn, /metres above station datum/, 'a change-in-cm chart is not labelled as metres');
+  });
+  await sp.context.close();
+  const np = await open(browser, { scenario: 'nopicture' });
+  await waitLive(np.page);
+  await step('save image: if the picture code cannot be fetched, the visitor is told plainly and nothing is saved', async () => {
+    await np.page.waitForFunction(() => document.querySelector('#tl-chart canvas'));
+    let saved = false;
+    np.page.on('download', () => { saved = true; });
+    await np.page.click('#tl-png');
+    await np.page.waitForSelector('#toasts .toast-error');
+    assert.match(await np.page.textContent('#toasts'), /The picture code could not be loaded\. Check your connection and try again\./);
+    assert.doesNotMatch(await np.page.textContent('#toasts'), /dynamically imported|Failed to fetch/, 'not the browser\'s own wording');
+    assert.equal(saved, false);
+  });
+  await np.context.close();
 
   /* ---------- Demo replay: real Feb 2020 readings, labelled everywhere ---------- */
   const demo = await open(browser, { path: '/?demo=feb2020' });

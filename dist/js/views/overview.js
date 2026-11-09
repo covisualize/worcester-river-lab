@@ -210,20 +210,29 @@ export function createOverview(ctx) {
   // "Save image": the chart as a PNG that carries its own title, period, source and date (see chart-image.js). The picture module is
   // fetched on the first click, so it adds nothing to the page's start-up.
   async function saveTimelineImage() {
+    let chartPicture;
+    try {
+      ({ chartPicture } = await import('../chart-image.js'));
+    } catch {
+      toast('The picture code could not be loaded. Check your connection and try again.', 'error');
+      return;
+    }
+    // The module may have taken a while to arrive (the first click), and the chart can change meanwhile (another range, the Bewdley
+    // comparison). So nothing about the chart is read until now, and from here to the chartPicture() call nothing waits (that call
+    // takes the chart's pixels before its first await): the picture and its caption always come from the same drawing.
     const main = lastWindow?.find(x => x.id === PRIMARY);
     if (!chart?.chart || !main || !lastDraw) { toast('The chart is not ready yet. Try again in a moment.'); return; }
     if (!main.raw.length) { toast('There are no readings in this chart to save a picture of.'); return; } // e.g. an offline snapshot that is older than the range
     const st = live.status, now = Date.now(), name = live.station(PRIMARY)?.label || 'Diglis';
-    const { label, compare } = lastDraw, end = main.raw.at(-1)[0];
+    const { label, compare, range } = lastDraw, end = main.raw.at(-1)[0];
     try {
-      const { chartPicture } = await import('../chart-image.js');
       const blob = await chartPicture(chart.chart, {
         T: ctx.T,
         title: compare ? `River level change since the start of the period: Bewdley (upstream) and ${name}` : `River Severn at ${name}, Worcester`,
         subtitle: `${label}, ${fmt.dateTime(main.raw[0][0])} to ${fmt.dateTime(end)} (${fmt.zone(end)}) · ${compare ? 'change in cm' : 'metres above station datum'} · UK time`,
         footer: imageFooter({ mode: st.mode, snapshotAt: st.snapshotAt, last: live.latestOf(PRIMARY), now }),
       });
-      downloadBlob(imageFileName({ range: store.get().range, mode: st.mode, now }), blob);
+      downloadBlob(imageFileName({ range, mode: st.mode, now }), blob);
     } catch (e) {
       toast(e.message || 'The picture could not be made.', 'error');
     }
@@ -247,7 +256,7 @@ export function createOverview(ctx) {
         return { id: sid, name: st.label, raw, color: ctx.colorOf(sid), data: breakGaps(ctx.transformFor(raw, metric, st)), highlight: sid === PRIMARY };
       });
       lastWindow = series;
-      lastDraw = { label, compare };
+      lastDraw = { label, compare, range: s.range };
       const main = series.find(x => x.id === PRIMARY);
       const sc = live.primary()?.scale;
       if (!main.raw.length) { chart?.set({}); $('#tl-note').textContent = `No readings for ${label}.`; return; }

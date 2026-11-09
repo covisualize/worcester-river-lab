@@ -25,6 +25,8 @@ export function wrapText(ctx, text, maxWidth) {
 }
 
 // Resolves to a PNG Blob. `echart` is a live ECharts instance, `T` the theme tokens (tokens() in ui.js), `footer` an array of strings.
+// The chart's pixels are taken at once, before anything is awaited: the caller can rely on the picture showing the chart as it was
+// when this was called, so the caption it passes in cannot belong to a different drawing.
 export async function chartPicture(echart, { T, title, subtitle, footer, scale = 2 }) {
   // The zoom slider is a control: in a still picture it would look like one that does nothing. It is left out and the strip it
   // occupied at the bottom is cropped (its height and offset are in the chart's own options, so the crop follows them).

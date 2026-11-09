@@ -98,9 +98,13 @@ Anything broken here takes priority over the backlog.
   data.js and the print stamp and the picture both use it, so they cannot disagree (the printout's text is unchanged,
   covered by the existing print tests). The picture code (`js/chart-image.js`) is fetched on the first click, so the page's
   start-up is unchanged. Tests: 8 unit (wording for live/demo/snapshot/no reading, file names including BST, text wrapping)
-  and 4 e2e steps that really click, receive the download and decode the PNG (signature, size, text in the header and footer
+  and 6 e2e steps that really click, receive the download and decode the PNG (signature, size, text in the header and footer
   strips, chart in the middle) and capture every string drawn on the canvas, for live, compare view, demo replay and an
-  offline snapshot. Negative control: sending `mode: 'live'` whatever the real mode, and dropping the warnings line, made the
+  offline snapshot, plus a failed fetch of the picture code (plain message, nothing saved). Codex review found a race in the
+  first version: on the first click the caption was read before the picture code arrived, so switching to the Bewdley
+  comparison in that window gave a change-in-cm chart labelled "metres above station datum". Reproduced first with a 1.5 s
+  slow-picture scenario (the step failed on the old code), then fixed: nothing about the chart is read until the module is
+  loaded, and the capture starts in the same synchronous run (the file name's range also comes from the drawing). Negative control: sending `mode: 'live'` whatever the real mode, and dropping the warnings line, made the
   live, demo and snapshot steps fail. Found by the snapshot test: an offline snapshot is days old, so the 24-hour chart is
   empty ("No readings for Last 24 hours") and the first version of the button said "not ready yet"; it now says there are no
   readings to save a picture of. Limits: checked in Chromium (desktop and phone emulation, light and dark) against the live
