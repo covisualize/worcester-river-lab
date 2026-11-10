@@ -84,6 +84,17 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-11-10 — daily/2026-11-10-delayed-legible — Health: site live on desktop+mobile, no console errors, no overflow;
+  6 of 7 gauges current (20-36 min); Bransford 141 min old, over the 2 h flag (it publishes late in batches, as before;
+  the pill says "1 gauge delayed" and its card says so); no warnings near Worcester (one elsewhere in England); EA shapes
+  unchanged; deploys of #28 and #29 green and the river diagram is live; no open PRs. Change: the first real delayed gauge
+  showed two flaws in yesterday's river diagram. (1) A delayed gauge faded all of its node, words included, so "delayed"
+  (the point) was the least readable text in the drawing and, at 60% opacity, under the 4.5:1 contrast minimum. Now only the
+  bar, dot and stem fade; the words stay at full contrast, in italic. (2) On the wide layout the Teme's curve touched the
+  longer "Within typical range · delayed" text; the confluence moved 40 units right (still above Kempsey, which is below it
+  on the river). Tests: 1 e2e step on the existing delayed-gauge scenario (words at effective opacity 1, graphics below 1,
+  italic, same ink as the name, text ends before the curve); it fails on the old CSS (0.6 !== 1). Looked at against the live
+  EA, desktop and phone. Lesson for the diagram: dim graphics, never text.
 - 2026-11-09 — ccr-a935da98-tkn87x (owner request: graphical and design improvements) — "The river at a glance": a
   schematic above the station cards with the gauges in the order the water passes them, the Teme joining the Severn below
   Diglis, and at each gauge a bar from its EA typical low to typical high filled to the latest reading (a line above the

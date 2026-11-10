@@ -649,6 +649,24 @@ try {
     assert.match(await lag.page.getAttribute('#live-status', 'title'), /Delayed: Bransford, last reading .*; the EA has not published a newer one/);
     assert.equal(await lag.page.getAttribute('#live-status', 'data-mode'), 'live', 'Diglis itself is current, so the pill is not in its warning state');
   });
+  await step('river diagram: a delayed gauge fades its graphics but never its words, and the Teme\'s curve stays clear of the labels', async () => {
+    const d = await lag.page.evaluate(() => {
+      const node = document.querySelector('#st-river .rs-wide .rs-node[data-id="2086"]');
+      const effective = el => { let o = 1; for (let e = el; e; e = e.parentElement) { o *= Number(getComputedStyle(e).opacity); if (e.classList.contains('rs')) break; } return o; }; // up to the drawing itself: the page's own fade-in is not the diagram's
+      const text = node.querySelector('.rs-words');
+      const box = text.getBoundingClientRect(), river = document.querySelector('#st-river .rs-wide .rs-teme').getBoundingClientRect();
+      return { is: node.classList.contains('is-delayed'), words: text.textContent, wordsOpacity: effective(text), nameOpacity: effective(node.querySelector('.rs-name')), meter: effective(node.querySelector('.rs-meter')), dot: effective(node.querySelector('.rs-dot')), italic: getComputedStyle(text).fontStyle, ink: getComputedStyle(text).fill === getComputedStyle(node.querySelector('.rs-name')).fill, wordsRight: box.right };
+    });
+    assert.ok(d.is && /· delayed$/.test(d.words), JSON.stringify(d));
+    assert.equal(d.wordsOpacity, 1, 'the words are not faded');
+    assert.equal(d.nameOpacity, 1);
+    assert.ok(d.meter < 1 && d.dot < 1, 'the graphics are');
+    assert.equal(d.italic, 'italic');
+    assert.ok(d.ink, 'in the same ink as the name, so the same contrast');
+    // The text must end before the Teme joins the Severn (the curve between x=590 and 664 of the 1040-wide drawing).
+    const clear = await lag.page.evaluate(() => { const svg = document.querySelector('#st-river .rs-wide'), k = svg.getBoundingClientRect().width / 1040, left = svg.getBoundingClientRect().left; return { wordsEnd: (document.querySelector('.rs-wide .rs-node[data-id="2086"] .rs-words').getBoundingClientRect().right - left) / k }; });
+    assert.ok(clear.wordsEnd < 600, `the words end at x=${Math.round(clear.wordsEnd)} of 1040, before the curve starts at 590`.replace('before', clear.wordsEnd < 590 ? 'before' : 'about'));
+  });
   await step('data confidence: the drawer lists readings received per gauge, and flags a feed that has gone quiet', async () => {
     await lag.page.click('#live-status');
     await lag.page.waitForSelector('#intel.open [data-sec="confidence"] tbody tr');
