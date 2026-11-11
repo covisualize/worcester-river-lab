@@ -492,7 +492,7 @@ export function imageFooter({ mode, snapshotAt, last, now }) {
 }
 
 // File names travel with the picture, so a demo or an old snapshot says so there too.
-export function imageFileName({ range, mode, now }) {
+export function imageFileName({ range, mode, now, name = 'diglis' }) {
   const tag = mode === 'demo' ? 'DEMO-replay-' : mode === 'snapshot' ? 'SNAPSHOT-' : '';
-  return `${tag}diglis-${range}-chart-${ukDateInput(now)}-${fmt.time(now).replace(':', '')}.png`;
+  return `${tag}${name}-${range}-chart-${ukDateInput(now)}-${fmt.time(now).replace(':', '')}.png`;
 }

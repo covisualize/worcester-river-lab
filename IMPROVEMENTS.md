@@ -72,9 +72,10 @@ Anything broken here takes priority over the backlog.
 - [ ] Shareable PNG/CSV of any chart view. Step 1 done (2026-11-09): the Overview timeline has "Save image", a PNG with a
       title and period above the chart and, below it, which reading it shows (or that it is a demo or an offline snapshot),
       when it was saved, that it is unofficial, the EA source and licence, and the official-warnings pointer; a demo or
-      snapshot also says so in the file name. Left: the same for Analysis, Explore and History (`chartPicture()` in
-      `js/chart-image.js` takes any ECharts instance; each chart needs its own title and period lines), and a phone share
-      sheet (`navigator.share` with a file), which needs a real phone to test.
+      snapshot also says so in the file name. Step 2 done (2026-11-11): the same on Explore (see that entry). Left: Analysis
+      and History charts (`saveChartPicture()` in `js/ui.js` and `chartPicture()` in `js/chart-image.js` take any ECharts
+      instance; each chart needs its own title, period and caveat lines), and a phone share sheet (`navigator.share` with a
+      file), which needs a real phone to test.
 - [x] Data-quality panel, step 1: per-gauge completeness for the last 24 h in the Flood info drawer's "Data
       confidence" section (readings received of 96, longest gap), see 2026-11-03.
 - [ ] Data-quality panel, step 2: completeness for the window chosen in Explore, and for the Hydrology archive.
@@ -84,6 +85,22 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-11-11 — daily/2026-11-11-explore-image — Health: site live on desktop+mobile; the first health run logged one
+  console error per viewport (a readings-history request to the EA blocked "by CORS": the EA's gateway answered an error
+  page without the CORS header). That is the EA, not the site: the same request took 22 s on its first try (the EA slow spell
+  of 7 Nov again) and 0.5-0.7 s with the right header afterwards, two further runs on both viewports had no errors, and the
+  page had stayed in live mode with the latest values. 7 gauges current (Bransford 66 min); no warnings within 40 km; EA
+  shapes unchanged; deploys of #28 and #29 green; open PR: #30 (untouched). Change: "Save image" on Explore, the second chart
+  with a shareable picture. Title is the measure and the stations with data; the subtitle has the period (UK time), any station
+  with no readings, the page's own "Different datums: compare shapes and timing, not heights" warning when two or more
+  gauges share a stage axis, and, part-way through a playback, "replay at <time>: later readings are not shown" (the chart
+  and the picture show only the readings up to the playhead). Footer, demo and snapshot labelling and file names are shared
+  with the Overview picture (`explore-<measure>-<range>-chart-<date>-<time>.png`). Refactor: the safe ordering from the
+  Codex finding on #28 (load the picture code first, then read the chart and its caption in one synchronous step) now lives
+  once in `saveChartPicture()` in ui.js and both charts use it; the Overview's six e2e steps, including the slow-picture
+  race, still pass on it. Tests: 1 e2e step on Explore (two stations, partial playback, a second measure; PNG decoded, text
+  captured) and unit cases for the file name; negative controls: reading the chart before the code loads, and dropping the
+  replay wording, each failed the step that should. Looked at against the live EA on desktop and phone.
 - 2026-11-09 — ccr-a935da98-tkn87x (owner request: graphical and design improvements) — "The river at a glance": a
   schematic above the station cards with the gauges in the order the water passes them, the Teme joining the Severn below
   Diglis, and at each gauge a bar from its EA typical low to typical high filled to the latest reading (a line above the

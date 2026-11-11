@@ -45,6 +45,8 @@ test('imageFileName: range, UK date and time, and a demo or snapshot says so in 
   assert.equal(imageFileName({ range: '7d', mode: 'demo', now: WINTER }), 'DEMO-replay-diglis-7d-chart-2026-11-09-0730.png');
   assert.equal(imageFileName({ range: '7d', mode: 'snapshot', now: WINTER }), 'SNAPSHOT-diglis-7d-chart-2026-11-09-0730.png');
   assert.doesNotMatch(imageFileName({ range: '7d', mode: 'live', now: SUMMER }), /[:\s/\\]/, 'a name every system accepts');
+  assert.equal(imageFileName({ range: '7d', mode: 'live', now: WINTER, name: 'explore-stage' }), 'explore-stage-7d-chart-2026-11-09-0730.png', 'other charts name themselves');
+  assert.equal(imageFileName({ range: '7d', mode: 'demo', now: WINTER, name: 'explore-rate' }), 'DEMO-replay-explore-rate-7d-chart-2026-11-09-0730.png');
 });
 
 // A stand-in for a canvas context: every character is 10 units wide.
