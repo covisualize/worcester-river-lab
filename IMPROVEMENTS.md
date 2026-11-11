@@ -100,7 +100,11 @@ Anything broken here takes priority over the backlog.
   once in `saveChartPicture()` in ui.js and both charts use it; the Overview's six e2e steps, including the slow-picture
   race, still pass on it. Tests: 1 e2e step on Explore (two stations, partial playback, a second measure; PNG decoded, text
   captured) and unit cases for the file name; negative controls: reading the chart before the code loads, and dropping the
-  replay wording, each failed the step that should. Looked at against the live EA on desktop and phone.
+  replay wording, each failed the step that should. Looked at against the live EA on desktop and phone. Codex review found a
+  real inconsistency that was already on screen: a full redraw part-way through a replay (annotations toggled, theme changed, a
+  note added) put the whole window back on the chart while the scrubber stayed mid-way, so a saved picture would have said
+  "later readings are not shown" over a chart that showed them. Reproduced first (94 points plotted where the replay had 48),
+  then fixed at the cause: `draw()` now re-applies the playhead when a replay is part-way, so chart, scrubber and caption agree.
 - 2026-11-09 — ccr-a935da98-tkn87x (owner request: graphical and design improvements) — "The river at a glance": a
   schematic above the station cards with the gauges in the order the water passes them, the Teme joining the Severn below
   Diglis, and at each gauge a bar from its EA typical low to typical high filled to the latest reading (a line above the

@@ -122,6 +122,9 @@ export function createExplore(ctx) {
     $('#ex-chart-title').textContent = `${METRICS[metric].label}`;
     $('#ex-sub').innerHTML = `${esc(current.label)} · ${current.series.length} station${current.series.length > 1 ? 's' : ''} · ${esc(current.sources.join(' + ') || 'no data')}${empty.length ? ` · <b>no readings for ${esc(empty.join(', '))}</b>` : ''}${metric === 'stage' && current.series.length > 1 ? ' · <b>Different datums:</b> compare shapes and timing, or switch to % of typical range.' : ''}`;
     $('#ex-playtime').textContent = fmt.dateTime(current.to);
+    // This redraw puts the whole window back (annotations toggled, theme changed, a note added). If a replay is part-way, keep it, so
+    // the chart, the scrubber and a saved picture's caption all still describe the same thing.
+    if (playFrac < 0.999) applyPlayhead(playFrac);
   }
 
   /* ---------- Save image ---------- */

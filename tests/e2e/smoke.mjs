@@ -546,6 +546,22 @@ try {
     await xi.page.evaluate(() => { const e = document.querySelector('#ex-scrub'); e.value = 500; e.dispatchEvent(new Event('input')); });
     const part = await saveImage(xi.page, opts);
     assert.match(part.drawn, /· replay at \w{3}, \d+ \w{3} \d{4}, \d\d:\d\d (GMT|BST): later readings are not shown/);
+    // A full redraw part-way through a replay (annotations switched off and on, the theme, a note) keeps the replay: the chart, the
+    // scrubber and the picture's caption must all describe the same thing.
+    const plotted = () => xi.page.evaluate(() => echarts.getInstanceByDom(document.querySelector('#ex-chart')).getOption().series[0].data.length);
+    const partial = await plotted();
+    await xi.page.evaluate(() => { const e = document.querySelector('#ex-scrub'); e.value = 1000; e.dispatchEvent(new Event('input')); });
+    const whole = await plotted();
+    assert.ok(partial < whole, `a replay plots fewer points than the whole window (${partial} < ${whole})`);
+    await xi.page.evaluate(() => { const e = document.querySelector('#ex-scrub'); e.value = 500; e.dispatchEvent(new Event('input')); });
+    await xi.page.click('#ex-auto'); // a full redraw
+    await xi.page.waitForTimeout(300);
+    assert.equal(await plotted(), partial, 'still the replay after a full redraw');
+    assert.match((await saveImage(xi.page, opts)).drawn, /replay at /, 'and the picture says so');
+    await xi.page.click('#ex-auto');
+    await xi.page.evaluate(() => { const e = document.querySelector('#ex-scrub'); e.value = 1000; e.dispatchEvent(new Event('input')); });
+    assert.equal(await plotted(), whole, 'back at the end it is the whole window again');
+    assert.doesNotMatch((await saveImage(xi.page, opts)).drawn, /replay at /);
     // Another measure names itself in the picture and in the file name.
     await xi.page.evaluate(() => { const e = document.querySelector('#ex-scrub'); e.value = 1000; e.dispatchEvent(new Event('input')); });
     await xi.page.click('#ex-metric [data-metric="rate"]');
