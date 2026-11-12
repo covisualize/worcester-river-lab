@@ -248,8 +248,9 @@ export function createOverview(ctx) {
     const series = lastWindow || [], st = live.status;
     const { rows, total } = readingsTable(series, TABLE_ROWS);
     if (!rows.length) { $('#tl-table').innerHTML = ''; $('#tl-table-note').textContent = 'There are no readings in this chart.'; return; }
+    const unit = series.length > 1 ? 'times with a reading' : 'readings'; // two gauges are joined by time, so the rows are times, not one gauge's readings
     const basis = st.mode === 'demo' || st.mode === 'snapshot' ? ` ${dataBasis({ mode: st.mode, snapshotAt: st.snapshotAt, last: live.latestOf(PRIMARY) })}` : '';
-    $('#tl-table-note').textContent = `${lastDraw?.label || ''}: ${total > rows.length ? `the latest ${rows.length} of ${total} readings (Download CSV has all of them)` : `all ${total} readings`}, in UK time. Levels are metres above each gauge's own station datum${lastDraw?.compare ? ', not the change in cm that the chart shows' : ''}. A dash means that gauge has no reading at that time.${basis}`;
+    $('#tl-table-note').textContent = `${lastDraw?.label || ''}: ${total > rows.length ? `the latest ${rows.length} of ${total} ${unit} (Download CSV has all of them)` : `all ${total} ${unit}`}, in UK time. Levels are metres above each gauge's own station datum${lastDraw?.compare ? ', not the change in cm that the chart shows' : ''}. A dash means that gauge has no reading at that time.${basis}`;
     $('#tl-table').innerHTML = `<caption class="sr-only">Readings behind the river level timeline, newest first</caption>
       <thead><tr><th scope="col">Time</th>${series.map(x => `<th scope="col" class="n">${esc(x.name)} (m)</th>`).join('')}</tr></thead>
       <tbody>${rows.map(r => `<tr><th scope="row">${fmt.dateTime(r.t)} ${fmt.zone(r.t)}</th>${r.values.map(v => (v == null ? '<td class="n"><span class="sr-only">no reading</span><span aria-hidden="true">—</span></td>' : `<td class="n">${v.toFixed(3)}</td>`)).join('')}</tr>`).join('')}</tbody>`;

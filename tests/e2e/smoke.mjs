@@ -309,7 +309,7 @@ try {
     assert.deepEqual(await page.$$eval('#tl-table thead th', ths => ths.map(t => t.textContent.trim())), ['Time', 'Bewdley (m)', 'Diglis (m)']);
     const wide = await page.textContent('#tl-table-note');
     assert.match(wide, /not the change in cm that the chart shows/);
-    assert.match(wide, /the latest 96 of \d+ readings \(Download CSV has all of them\)/);
+    assert.match(wide, /the latest 96 of \d+ times with a reading \(Download CSV has all of them\)/);
     assert.equal(await page.locator('#tl-table tbody tr').count(), 96);
     await page.uncheck('#tl-upstream');
     await page.click('#tl-range [data-range="24h"]');
