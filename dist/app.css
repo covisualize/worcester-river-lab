@@ -377,6 +377,13 @@ main { max-width: 1320px; margin: 0 auto; padding: 22px 20px 40px; outline: none
 .data-table tr[aria-selected="true"] { background: var(--accent-soft); }
 .data-table button.link { background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; color: var(--text); }
 .table-wrap { max-height: 360px; overflow: auto; }
+/* The Overview timeline's readings as a table (a collapsed section under the chart). */
+.chart-table { margin-top: 10px; }
+.chart-table summary { cursor: pointer; font-size: 13px; font-weight: 600; padding: 8px 0; min-height: 24px; }
+.chart-table .table-wrap { margin-top: 8px; border: 1px solid var(--line); border-radius: 10px; }
+.chart-table .data-table thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
+.chart-table .data-table th[scope="row"] { color: var(--text); font-weight: 500; white-space: nowrap; font-size: 13px; }
+.chart-table .data-table th.n { text-align: right; }
 .rate-summary, .rain-summary, .sim-out { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
 .stat { background: var(--surface2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; min-width: 140px; flex: 1; }
 .stat span { display: block; font-size: 11.5px; color: var(--muted); }
@@ -642,7 +649,7 @@ body:has(#live-status[data-mode="loading"]) .hero-warnline i { margin-top: .5em;
   .topbar, .bottom-nav, .drawer, .scrim, .tools, .map-shell { display: none !important; }
   body { background: #fff; color: #000; }
   /* A printout is read later and cannot be clicked: no controls, and the stamp says when it was made. */
-  .btn, .icon-btn, .seg, .toggle-row, .custom-range, .explain, .demo-link, .foot-actions, .more-detail { display: none !important; }
+  .btn, .icon-btn, .seg, .toggle-row, .custom-range, .explain, .demo-link, .foot-actions, .more-detail, .chart-table { display: none !important; }
   .print-stamp { display: block !important; font-size: 12px; line-height: 1.45; border: 1px solid #000; padding: 6px 10px; margin: 0 0 12px; }
   .hero, .kpis, .kpi, .station, .chart { break-inside: avoid; }
   .panel-head, .more-detail { break-after: avoid; }
