@@ -234,7 +234,7 @@ try {
       assert.match(stamp, /unofficial summary of Environment Agency data\) · printed \w{3}, \d+ \w{3} \d{4}, \d\d:\d\d (GMT|BST)\. Latest Diglis reading: \w{3}, \d+ \w{3} \d{4}, \d\d:\d\d (GMT|BST)\./);
       assert.match(stamp, /official flood warnings use GOV\.UK Check for flooding or call Floodline 0345 988 1188/);
       assert.ok(await page.isVisible('#print-stamp'));
-      for (const hidden of ['#ov-warn-open', '#tl-csv', '#tl-png', '#tl-explore', '#tl-range', '.toggle-row', '.explain', '#st-grid .station .btn']) {
+      for (const hidden of ['#ov-warn-open', '#tl-csv', '#tl-png', '#tl-table-wrap', '#tl-explore', '#tl-range', '.toggle-row', '.explain', '#st-grid .station .btn']) {
         assert.ok(await page.locator(hidden).first().isHidden(), `${hidden} is not printed`);
       }
       assert.equal(await page.locator('.kpi:visible').count(), 6, 'the figures are printed');
@@ -282,6 +282,42 @@ try {
     await page.uncheck('#tl-upstream');
     await page.click('#tl-range [data-range="24h"]');
     await page.waitForFunction(() => /Last 24 hours/.test(document.querySelector('#tl-note').textContent));
+  });
+
+  await step('readings table: the numbers behind the timeline, newest first, reachable by keyboard, nothing filled in', async () => {
+    assert.ok(await page.isHidden('#tl-table'), 'collapsed until asked for');
+    await page.focus('#tl-table-wrap summary');
+    await page.keyboard.press('Enter'); // a native <details> toggles from the keyboard
+    await page.waitForSelector('#tl-table tbody tr');
+    const rows = await page.$$eval('#tl-table tbody tr', trs => trs.map(tr => [...tr.cells].map(c => c.textContent.trim())));
+    const note = await page.textContent('#tl-table-note');
+    const total = Number(note.match(/(?:all|of) (\d+) readings/)[1]);
+    assert.equal(rows.length, Math.min(96, total), note);
+    assert.deepEqual(await page.$$eval('#tl-table thead th', ths => ths.map(t => t.textContent.trim())), ['Time', 'Diglis (m)']);
+    assert.match(rows[0][0], /^\d+ \w{3}, \d\d:\d\d (GMT|BST)$/);
+    assert.equal(rows[0][1], latest.value.toFixed(3), 'the first row is the latest reading');
+    assert.match(note, /in UK time\. Levels are metres above each gauge's own station datum\./);
+    assert.equal(await page.getAttribute('#tl-table-wrap .table-wrap', 'role'), 'region');
+    assert.equal(await page.getAttribute('#tl-table-wrap .table-wrap', 'tabindex'), '0', 'a scrollable region a keyboard can reach');
+    assert.equal(await page.locator('#tl-table caption').count(), 1);
+    assert.equal(await page.locator('#tl-table tbody th[scope="row"]').count(), rows.length, 'each row is named by its time');
+    await page.evaluate(() => Promise.all(document.getAnimations().filter(a => Number.isFinite(a.effect.getComputedTiming().endTime)).map(a => a.finished))); // a colour mid-transition is not what the audit should read (animations that repeat for ever, like the live dot's pulse, never finish: leave those)
+    assert.deepEqual(await axeViolations(page), [], 'with the table open');
+    // The comparison view: both gauges' real levels, and a note that they are not the cm change on the chart.
+    await page.click('#tl-range [data-range="7d"]');
+    await page.check('#tl-upstream');
+    await page.waitForFunction(() => /Bewdley \(m\)/.test(document.querySelector('#tl-table thead').textContent));
+    assert.deepEqual(await page.$$eval('#tl-table thead th', ths => ths.map(t => t.textContent.trim())), ['Time', 'Bewdley (m)', 'Diglis (m)']);
+    const wide = await page.textContent('#tl-table-note');
+    assert.match(wide, /not the change in cm that the chart shows/);
+    assert.match(wide, /the latest 96 of \d+ times with a reading \(Download CSV has all of them\)/);
+    assert.equal(await page.locator('#tl-table tbody tr').count(), 96);
+    await page.uncheck('#tl-upstream');
+    await page.click('#tl-range [data-range="24h"]');
+    await page.waitForFunction(() => /Last 24 hours/.test(document.querySelector('#tl-note').textContent) && !/Bewdley/.test(document.querySelector('#tl-table thead').textContent));
+    await page.focus('#tl-table-wrap summary');
+    await page.keyboard.press('Enter'); // and closes again
+    assert.ok(await page.isHidden('#tl-table'));
   });
 
   await step('range switch animates the timeline and updates the URL', async () => {

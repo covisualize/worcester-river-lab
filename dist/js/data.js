@@ -468,6 +468,24 @@ export function toCSV(header, rows) {
   return [header.join(','), ...rows.map(r => r.map(esc).join(','))].join('\n');
 }
 
+/* ---------- A chart's readings as a table ---------- */
+
+// The readings behind a chart, for people who cannot see it or would rather read than hover: the real readings only, joined by time
+// across the chart's series, newest first, with null where a gauge has no reading at that time (nothing is filled in or interpolated).
+// `series` is [{ raw: [[epochMs, value], ...] }]; at most `limit` rows come back, with `total` saying how many there are.
+export function readingsTable(series, limit = 96) {
+  const byTime = new Map();
+  series.forEach((s, i) => {
+    for (const [t, v] of s.raw) {
+      if (!Number.isFinite(t) || !Number.isFinite(v)) continue;
+      if (!byTime.has(t)) byTime.set(t, new Array(series.length).fill(null));
+      byTime.get(t)[i] = v;
+    }
+  });
+  const times = [...byTime.keys()].sort((a, b) => b - a);
+  return { total: times.length, rows: times.slice(0, limit).map(t => ({ t, values: byTime.get(t) })) };
+}
+
 /* ---------- Things that leave the page: printouts and saved pictures ---------- */
 
 // A printout or a picture is looked at later and away from the page, so "21 min ago" and "Up to date" are no longer true and nothing

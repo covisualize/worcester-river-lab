@@ -24,7 +24,8 @@ Anything broken here takes priority over the backlog.
 - [x] Accessibility audit (WCAG 2.2 AA + best practice, axe-core): zero violations on all
       5 views in both themes; chart screen-reader summaries; regression test in e2e.
 - [ ] Accessibility follow-up: manual screen-reader pass (VoiceOver/NVDA) over the map
-      panel and Explore playback; a visible "skip to chart data" table option.
+      panel and Explore playback. (The visible chart-data table is done for the Overview timeline, see 2026-11-12; Analysis,
+      Explore and History charts still have only their text summary.)
 - [x] Fallback snapshot covers all 7 gauges (weekly `research/build_snapshot.py`, kept unless
       all 7 gauges respond) and outage messages are plain English instead of "Failed to fetch".
 - [x] Performance, step 1: slim ECharts bundle (only the charts/components used; built by
@@ -85,6 +86,23 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-11-12 — daily/2026-11-12-chart-table — Health: site live on desktop+mobile, no console errors, no overflow; all 7
+  gauges current (21 min); no warnings within 40 km; EA shapes unchanged; deploys of #28 and #29 green (weekly refresh runs
+  Monday); open PRs: #30 and #31 (mine, awaiting review; not touched). Change: the Overview timeline gets "Show the readings
+  as a table", the backlog's "visible chart data table" for people who cannot see the chart (a screen reader got only its
+  one-line summary) or would rather read than hover. A collapsed native <details> under the chart: the real readings behind it,
+  newest first, the latest 96 with a pointer to the CSV for the rest; in the Bewdley comparison one column per gauge, joined by
+  time, with a dash (and "no reading" for a screen reader) where a gauge has none, never interpolated (live data showed it at
+  once: Bewdley's 08:00 reading was in and Diglis's not yet). Levels are raw metres above each gauge's own datum, and the note
+  says they are not the cm change the chart shows. It is built from the data, not the chart, so it also works while the
+  charting library is loading, has failed, or the chart is empty; reachable by keyboard (details toggles on Enter; the scroll
+  region has a tabindex); hidden in print; a demo or snapshot says so in its note. Tests: 4 unit (joining, null for a missing
+  gauge, the limit keeps the newest, junk skipped) and 1 e2e step (collapsed by default, keyboard open and close, rows against
+  the fixtures with the first row the latest reading, column names, ARIA region, one caption and row headers, the axe audit with
+  the table open, the comparison view, the 96-row cap). Negative control: removing the print rule failed the print step and
+  removing the tabindex failed the table step. Two test-writing lessons: an axe run must wait for colour transitions to settle
+  (it caught a range button mid-fade), and waiting for `getAnimations().finished` hangs for ever on animations that repeat (the
+  live dot's pulse): wait only for finite ones. Looked at against the live EA on desktop, phone and dark.
 - 2026-11-11 — daily/2026-11-11-explore-image — Health: site live on desktop+mobile; the first health run logged one
   console error per viewport (a readings-history request to the EA blocked "by CORS": the EA's gateway answered an error
   page without the CORS header). That is the EA, not the site: the same request took 22 s on its first try (the EA slow spell
