@@ -3,7 +3,7 @@ import { $, $$, h, esc, countTo, mountChart, loadECharts, download, downloadBlob
 import { timeSeriesOption, gaugeSVG, sparkline } from '../charts.js';
 import {
   change, currentRate, trend, rangePosition, rangeWords, freshness, verdict, splitWarnings, warningCount, rateSeries, breakGaps, notable, fmt, toCSV, windowed, time, gaps,
-  imageFooter, imageFileName,
+  imageFooter, imageFileName, readingsTable, dataBasis,
 } from '../data.js';
 import { PRIMARY, STATIONS, SEVERITY, RULES } from '../config.js';
 import { riverStrip } from '../river-strip.js';
@@ -51,6 +51,7 @@ export function createOverview(ctx) {
       download(`diglis-${store.get().range}.csv`, toCSV(['timestamp_utc', 'uk_local_time', 'station', 'level_m_asd'],
         lastWindow.flatMap(s => s.raw.map(([t, v]) => [new Date(t).toISOString(), fmt.full(t), s.name, v]))));
     };
+    $('#tl-table-wrap').addEventListener('toggle', drawTable);
     $('#tl-png').onclick = saveTimelineImage;
     $('#tl-explore').onclick = () => ctx.go('explore', { compare: $('#tl-upstream').checked ? ['2001', PRIMARY] : [PRIMARY] });
     $('#ov-warn-open').onclick = () => ctx.openIntel();
@@ -239,6 +240,22 @@ export function createOverview(ctx) {
     }
   }
 
+  // "Show the readings as a table": the real readings behind the chart, for people who cannot see it (a screen reader gets only its summary)
+  // or would rather read than hover. Built when the section is open, and again whenever the chart is redrawn while it is.
+  const TABLE_ROWS = 96;
+  function drawTable() {
+    if (!$('#tl-table-wrap').open) return;
+    const series = lastWindow || [], st = live.status;
+    const { rows, total } = readingsTable(series, TABLE_ROWS);
+    if (!rows.length) { $('#tl-table').innerHTML = ''; $('#tl-table-note').textContent = 'There are no readings in this chart.'; return; }
+    const unit = series.length > 1 ? 'times with a reading' : 'readings'; // two gauges are joined by time, so the rows are times, not one gauge's readings
+    const basis = st.mode === 'demo' || st.mode === 'snapshot' ? ` ${dataBasis({ mode: st.mode, snapshotAt: st.snapshotAt, last: live.latestOf(PRIMARY) })}` : '';
+    $('#tl-table-note').textContent = `${lastDraw?.label || ''}: ${total > rows.length ? `the latest ${rows.length} of ${total} ${unit} (Download CSV has all of them)` : `all ${total} ${unit}`}, in UK time. Levels are metres above each gauge's own station datum${lastDraw?.compare ? ', not the change in cm that the chart shows' : ''}. A dash means that gauge has no reading at that time.${basis}`;
+    $('#tl-table').innerHTML = `<caption class="sr-only">Readings behind the river level timeline, newest first</caption>
+      <thead><tr><th scope="col">Time</th>${series.map(x => `<th scope="col" class="n">${esc(x.name)} (m)</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(r => `<tr><th scope="row">${fmt.dateTime(r.t)} ${fmt.zone(r.t)}</th>${r.values.map(v => (v == null ? '<td class="n"><span class="sr-only">no reading</span><span aria-hidden="true">—</span></td>' : `<td class="n">${v.toFixed(3)}</td>`)).join('')}</tr>`).join('')}</tbody>`;
+  }
+
   async function drawTimeline() {
     const id = ++reqId;
     const s = store.get();
@@ -258,6 +275,7 @@ export function createOverview(ctx) {
       });
       lastWindow = series;
       lastDraw = { label, compare, range: s.range };
+      drawTable(); // from the data, not the chart: it works while the charting library is still loading, or has failed, or the chart is empty
       const main = series.find(x => x.id === PRIMARY);
       const sc = live.primary()?.scale;
       if (!main.raw.length) { chart?.set({}); $('#tl-note').textContent = `No readings for ${label}.`; return; }
