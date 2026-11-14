@@ -644,7 +644,9 @@ body:has(#live-status[data-mode="loading"]) .hero-warnline i { margin-top: .5em;
 .rs-val { font-size: 13px; fill: var(--muted) !important; }
 .rs-num { font-weight: 700; fill: var(--text); font-variant-numeric: tabular-nums; }
 .rs-words { font-size: 12px; fill: var(--muted) !important; }
-.rs-node.is-delayed { opacity: .6; }
+/* A delayed reading: the graphics fade, the words do not (the word "delayed" is the point, and faded text fails contrast). */
+.rs-node.is-delayed :is(.rs-meter, .rs-fill, .rs-dot, .rs-stem) { opacity: .5; }
+.rs-node.is-delayed .rs-words { font-style: italic; fill: var(--text) !important; }
 @media (max-width: 900px) {
   #st-river { aspect-ratio: 360 / 640; max-width: 420px; }
   .rs-wide { display: none; }
