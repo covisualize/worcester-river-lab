@@ -12,7 +12,7 @@ const LAYOUTS = {
   wide: {
     width: 1040, height: 290,
     severn: { path: 'M14,128 L1008,128', label: [14, 152], at: { 2001: [56, 128], 2642: [246, 128], 2085: [428, 128], 2616: [690, 128], 2032: [868, 128] } },
-    teme: { path: 'M150,256 L520,256 C580,256 572,128 628,128', label: [150, 280], at: { 2029: [200, 256], 2086: [382, 256] } },
+    teme: { path: 'M150,256 L590,256 C650,256 642,128 664,128', label: [150, 280], at: { 2029: [200, 256], 2086: [382, 256] } },
     arrow: 'M1008,128 l-12,-7 v14 z', flow: [1008, 152, 'end'],
     // The meter stands above its node, with the words to its right.
     meter: ([x, y]) => ({ x: x - 6, top: y - 84, stem: `M${x},${y - 32} V${y}`, text: [x + 16, y - 72] }),

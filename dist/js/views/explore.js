@@ -1,9 +1,9 @@
 // Explore mode: choose stations, dates and measures; annotate, play back and share.
 /* global L */
-import { $, $$, esc, mountChart, download, copyLink, setBusy, errorBox, toast } from '../ui.js';
+import { $, $$, esc, mountChart, download, saveChartPicture, copyLink, setBusy, errorBox, toast } from '../ui.js';
 import { timeSeriesOption } from '../charts.js';
-import { METRICS, breakGaps, notable, fmt, toCSV, stats, rangePosition, nearest, indexAtOrBefore, ukDateInput, time } from '../data.js';
-import { STATIONS, HOME } from '../config.js';
+import { METRICS, breakGaps, notable, fmt, toCSV, stats, rangePosition, nearest, indexAtOrBefore, ukDateInput, time, imageFooter, imageFileName } from '../data.js';
+import { STATIONS, HOME, PRIMARY } from '../config.js';
 import { basemap, gaugeIcon } from './map.js';
 
 export function createExplore(ctx) {
@@ -33,6 +33,7 @@ export function createExplore(ctx) {
     $$('#ex-metric button').forEach(b => (b.onclick = () => store.set({ metric: b.dataset.metric })));
     // Annotations
     $('#ex-auto').onchange = e => { autoNotes = e.target.checked; draw(false); };
+    $('#ex-png').onclick = saveExploreImage;
     $('#ex-clear-notes').onclick = () => store.set({ notes: [] });
     chart.chart?.getZr().on('click', e => {
       if (!current || !chart.chart.containPixel('grid', [e.offsetX, e.offsetY])) return;
@@ -88,7 +89,7 @@ export function createExplore(ctx) {
         const metricData = ctx.transformFor(raw, s.metric, st);
         return { id: sid, name: st.label, raw, metricData, color: ctx.colorOf(sid), metricAt: t => nearest(metricData, t, 0)?.[1] };
       });
-      current = { series, from, to, label, metric: s.metric, sources: [...sources], failed: s.compare.filter((sid, k) => res[k].status === 'rejected') };
+      current = { series, from, to, label, range: s.range, metric: s.metric, sources: [...sources], failed: s.compare.filter((sid, k) => res[k].status === 'rejected') };
       playFrac = 1;
       $('#ex-scrub').value = 1000;
       draw(true);
@@ -121,6 +122,30 @@ export function createExplore(ctx) {
     $('#ex-chart-title').textContent = `${METRICS[metric].label}`;
     $('#ex-sub').innerHTML = `${esc(current.label)} · ${current.series.length} station${current.series.length > 1 ? 's' : ''} · ${esc(current.sources.join(' + ') || 'no data')}${empty.length ? ` · <b>no readings for ${esc(empty.join(', '))}</b>` : ''}${metric === 'stage' && current.series.length > 1 ? ' · <b>Different datums:</b> compare shapes and timing, or switch to % of typical range.' : ''}`;
     $('#ex-playtime').textContent = fmt.dateTime(current.to);
+    // This redraw puts the whole window back (annotations toggled, theme changed, a note added). If a replay is part-way, keep it, so
+    // the chart, the scrubber and a saved picture's caption all still describe the same thing.
+    if (playFrac < 0.999) applyPlayhead(playFrac);
+  }
+
+  /* ---------- Save image ---------- */
+
+  // The chart as a PNG with its own title, period, source and date (see chart-image.js). It shows the chart as it is on screen, so a
+  // picture taken part-way through a playback says that later readings are not shown.
+  function saveExploreImage() {
+    return saveChartPicture(() => {
+      if (!chart?.chart || !current) return 'The chart is not ready yet. Try again in a moment.';
+      const withData = current.series.filter(x => x.raw.length), without = current.series.filter(x => !x.raw.length);
+      if (!withData.length) return 'There are no readings in this chart to save a picture of.';
+      const st = live.status, now = Date.now(), metric = METRICS[current.metric];
+      const replayAt = playFrac < 0.999 ? current.from + playFrac * (current.to - current.from) : null;
+      return {
+        echart: chart.chart, T: ctx.T,
+        title: `${metric.label}: ${withData.map(x => x.name).join(', ')}`,
+        subtitle: `${current.label}, ${fmt.dateTime(current.from)} to ${fmt.dateTime(current.to)} (${fmt.zone(current.to)}) · UK time${without.length ? ` · no readings for ${without.map(x => x.name).join(', ')}` : ''}${current.metric === 'stage' && current.series.length > 1 ? ' · Different datums: compare shapes and timing, not heights' : ''}${replayAt ? ` · replay at ${fmt.full(replayAt)}: later readings are not shown` : ''}`,
+        footer: imageFooter({ mode: st.mode, snapshotAt: st.snapshotAt, last: live.latestOf(PRIMARY), now }),
+        fileName: imageFileName({ name: `explore-${current.metric}`, range: current.range, mode: st.mode, now }),
+      };
+    });
   }
 
   /* ---------- Playback ---------- */

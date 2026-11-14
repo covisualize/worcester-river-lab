@@ -142,10 +142,11 @@ const waitLive = page => page.waitForFunction(() => window.__wr?.live.status.mod
 // Click "Save image" on the Overview timeline and return what came out: the file name, every string drawn on a canvas while the
 // picture was made (the text cannot be read back out of a PNG), and a description of the PNG itself, decoded in the page.
 // `during`, if given, runs right after the click, while the picture is still being made.
-async function saveImage(page, { during } = {}) {
-  await page.waitForFunction(() => document.querySelector('#tl-chart canvas') && /readings/.test(document.querySelector('#tl-note').textContent), null, { timeout: 10000 }).catch(async e => {
-    const seen = await page.evaluate(() => ({ canvases: document.querySelectorAll('#tl-chart canvas').length, note: document.querySelector('#tl-note').textContent, mode: window.__wr?.live.status.mode, view: location.search }));
-    throw new Error(`the timeline never showed its chart and readings: ${JSON.stringify(seen)}`);
+async function saveImage(page, { during, button = '#tl-png', canvas = '#tl-chart canvas', note = '#tl-note', noteRe = 'readings' } = {}) {
+  const where = { canvas, note, noteRe };
+  await page.waitForFunction(w => document.querySelector(w.canvas) && new RegExp(w.noteRe).test(document.querySelector(w.note).textContent), where, { timeout: 10000 }).catch(async e => {
+    const seen = await page.evaluate(w => ({ canvases: document.querySelectorAll(w.canvas).length, note: document.querySelector(w.note).textContent, mode: window.__wr?.live.status.mode, view: location.search }), where);
+    throw new Error(`the chart never showed itself and its readings: ${JSON.stringify(seen)}`);
   });
   await page.evaluate(() => {
     window.__drawn = [];
@@ -155,7 +156,7 @@ async function saveImage(page, { during } = {}) {
   try {
     const downloading = page.waitForEvent('download', { timeout: 10000 });
     downloading.catch(() => {}); // if `during` fails first, this must not become an unhandled rejection; the await below still reports it
-    await page.click('#tl-png');
+    await page.click(button);
     await during?.();
     const download = await downloading;
     const bytes = await readFile(await download.path());
@@ -561,6 +562,53 @@ try {
     assert.equal(await ne.page.locator('#ov-timeline .state-error').count(), 0, 'the error is cleared once it loads');
   });
   await ne.context.close();
+  const xi = await open(browser, { path: '/?view=explore' });
+  await step('explore save image: the measure, the stations and the period are in the picture; a replay says where it stopped', async () => {
+    const opts = { button: '#ex-png', canvas: '#ex-chart canvas', note: '#ex-sub', noteRe: 'station' };
+    await xi.page.waitForSelector('#ex-chart canvas', { timeout: 15000 });
+    await xi.page.check('#ex-stations input[value="2001"]');
+    await xi.page.waitForFunction(() => /2 stations/.test(document.querySelector('#ex-sub').textContent));
+    const shot = await saveImage(xi.page, opts);
+    assert.match(shot.name, /^explore-stage-24h-chart-\d{4}-\d\d-\d\d-\d{4}\.png$/);
+    assert.equal(shot.bytes.subarray(0, 8).toString('hex'), PNG_SIGNATURE);
+    assert.match(shot.drawn, /Stage \(m above station datum\): (Bewdley, Diglis|Diglis, Bewdley)/);
+    assert.match(shot.drawn, /Last 24 hours, .+ to .+ \((GMT|BST)\) · UK time/);
+    assert.match(shot.drawn, /Different datums: compare shapes and timing, not heights/, 'two gauges on one stage axis carry the page\'s own warning about it');
+    assert.doesNotMatch(shot.drawn, /replay at/, 'a whole window is not a replay');
+    assert.match(shot.drawn, /unofficial summary of Environment Agency real-time data/);
+    assert.match(shot.drawn, /official flood warnings use GOV\.UK/);
+    assert.ok(shot.picture.header > 3 && shot.picture.footer > 3 && shot.picture.middle > 3);
+    // Part-way through a playback the chart shows only the readings up to the playhead, and the picture says so.
+    await xi.page.evaluate(() => { const e = document.querySelector('#ex-scrub'); e.value = 500; e.dispatchEvent(new Event('input')); });
+    const part = await saveImage(xi.page, opts);
+    assert.match(part.drawn, /· replay at \w{3}, \d+ \w{3} \d{4}, \d\d:\d\d (GMT|BST): later readings are not shown/);
+    // A full redraw part-way through a replay (annotations switched off and on, the theme, a note) keeps the replay: the chart, the
+    // scrubber and the picture's caption must all describe the same thing.
+    const plotted = () => xi.page.evaluate(() => echarts.getInstanceByDom(document.querySelector('#ex-chart')).getOption().series[0].data.length);
+    const partial = await plotted();
+    await xi.page.evaluate(() => { const e = document.querySelector('#ex-scrub'); e.value = 1000; e.dispatchEvent(new Event('input')); });
+    const whole = await plotted();
+    assert.ok(partial < whole, `a replay plots fewer points than the whole window (${partial} < ${whole})`);
+    await xi.page.evaluate(() => { const e = document.querySelector('#ex-scrub'); e.value = 500; e.dispatchEvent(new Event('input')); });
+    await xi.page.click('#ex-auto'); // a full redraw
+    await xi.page.waitForTimeout(300);
+    assert.equal(await plotted(), partial, 'still the replay after a full redraw');
+    assert.match((await saveImage(xi.page, opts)).drawn, /replay at /, 'and the picture says so');
+    await xi.page.click('#ex-auto');
+    await xi.page.evaluate(() => { const e = document.querySelector('#ex-scrub'); e.value = 1000; e.dispatchEvent(new Event('input')); });
+    assert.equal(await plotted(), whole, 'back at the end it is the whole window again');
+    assert.doesNotMatch((await saveImage(xi.page, opts)).drawn, /replay at /);
+    // Another measure names itself in the picture and in the file name.
+    await xi.page.evaluate(() => { const e = document.querySelector('#ex-scrub'); e.value = 1000; e.dispatchEvent(new Event('input')); });
+    await xi.page.click('#ex-metric [data-metric="rate"]');
+    await xi.page.waitForFunction(() => /Rate of change/.test(document.querySelector('#ex-chart-title').textContent));
+    const rate = await saveImage(xi.page, opts);
+    assert.match(rate.name, /^explore-rate-24h-chart-/);
+    assert.match(rate.drawn, /Rate of change \(cm per hour\): /);
+    assert.doesNotMatch(rate.drawn, /Different datums/, 'a rate has no datum, so there is nothing to warn about');
+  });
+  assert.deepEqual(xi.errors, []);
+  await xi.context.close();
   const dh = await open(browser, { path: '/?view=history' });
   await step('a direct link to a chart view waits for the library and then draws', async () => {
     await dh.page.waitForSelector('#hi-chart canvas', { timeout: 15000 });
@@ -684,6 +732,24 @@ try {
     assert.match(await lag.page.textContent('#live-status'), /^Live · \d\d:\d\d · 1 gauge delayed$/);
     assert.match(await lag.page.getAttribute('#live-status', 'title'), /Delayed: Bransford, last reading .*; the EA has not published a newer one/);
     assert.equal(await lag.page.getAttribute('#live-status', 'data-mode'), 'live', 'Diglis itself is current, so the pill is not in its warning state');
+  });
+  await step('river diagram: a delayed gauge fades its graphics but never its words, and the Teme\'s curve stays clear of the labels', async () => {
+    const d = await lag.page.evaluate(() => {
+      const node = document.querySelector('#st-river .rs-wide .rs-node[data-id="2086"]');
+      const effective = el => { let o = 1; for (let e = el; e; e = e.parentElement) { o *= Number(getComputedStyle(e).opacity); if (e.classList.contains('rs')) break; } return o; }; // up to the drawing itself: the page's own fade-in is not the diagram's
+      const text = node.querySelector('.rs-words');
+      const box = text.getBoundingClientRect(), river = document.querySelector('#st-river .rs-wide .rs-teme').getBoundingClientRect();
+      return { is: node.classList.contains('is-delayed'), words: text.textContent, wordsOpacity: effective(text), nameOpacity: effective(node.querySelector('.rs-name')), meter: effective(node.querySelector('.rs-meter')), dot: effective(node.querySelector('.rs-dot')), italic: getComputedStyle(text).fontStyle, ink: getComputedStyle(text).fill === getComputedStyle(node.querySelector('.rs-name')).fill, wordsRight: box.right };
+    });
+    assert.ok(d.is && /· delayed$/.test(d.words), JSON.stringify(d));
+    assert.equal(d.wordsOpacity, 1, 'the words are not faded');
+    assert.equal(d.nameOpacity, 1);
+    assert.ok(d.meter < 1 && d.dot < 1, 'the graphics are');
+    assert.equal(d.italic, 'italic');
+    assert.ok(d.ink, 'in the same ink as the name, so the same contrast');
+    // The text must end before the Teme joins the Severn (the curve between x=590 and 664 of the 1040-wide drawing).
+    const clear = await lag.page.evaluate(() => { const svg = document.querySelector('#st-river .rs-wide'), k = svg.getBoundingClientRect().width / 1040, left = svg.getBoundingClientRect().left; return { wordsEnd: (document.querySelector('.rs-wide .rs-node[data-id="2086"] .rs-words').getBoundingClientRect().right - left) / k }; });
+    assert.ok(clear.wordsEnd < 600, `the words end at x=${Math.round(clear.wordsEnd)} of 1040, before the curve starts at 590`.replace('before', clear.wordsEnd < 590 ? 'before' : 'about'));
   });
   await step('data confidence: the drawer lists readings received per gauge, and flags a feed that has gone quiet', async () => {
     await lag.page.click('#live-status');
@@ -828,6 +894,33 @@ try {
     assert.equal(saved, false);
   });
   await np.context.close();
+
+  /* ---------- Narrow phones: nothing wider than the screen (360 px is the most common Android width; 320 the smallest) ---------- */
+  for (const width of [360, 320]) {
+    await step(`${width} px phone: no view scrolls sideways, and the header's buttons stay on screen`, async () => {
+      for (const view of ['overview', 'map', 'analysis', 'explore', 'history']) {
+        const n = await open(browser, { path: `/?view=${view}`, viewport: { width, height: 740 } });
+        try {
+          await waitLive(n.page);
+          await n.page.waitForTimeout(800);
+          const m = await n.page.evaluate(() => {
+            const W = document.documentElement.clientWidth, name = document.querySelector('.brand b'), brand = document.querySelector('.brand span');
+            return {
+              over: document.documentElement.scrollWidth - W,
+              toolsRight: Math.max(...[...document.querySelectorAll('.topbar-tools > *')].map(e => Math.round(e.getBoundingClientRect().right))),
+              W, nameClipped: name.scrollWidth > name.clientWidth + 1, nameShown: getComputedStyle(brand).display !== 'none',
+              linkName: document.querySelector('.brand').getAttribute('aria-label'),
+            };
+          });
+          assert.ok(m.over <= 0, `${view}: the page is ${m.over}px wider than the screen`);
+          assert.ok(m.toolsRight <= m.W, `${view}: the header's last button ends at ${m.toolsRight} of ${m.W}`);
+          assert.match(m.linkName, /Worcester River/, 'the logo link always has its name');
+          if (width === 360) assert.ok(m.nameShown && !m.nameClipped, `${view}: at 360 px the name is shown in full (it wraps onto two lines)`);
+          else assert.ok(!m.nameShown, `${view}: at 320 px only the logo is shown`);
+        } finally { await n.context.close(); }
+      }
+    });
+  }
 
   /* ---------- Demo replay: real Feb 2020 readings, labelled everywhere ---------- */
   const demo = await open(browser, { path: '/?demo=feb2020' });

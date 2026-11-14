@@ -88,9 +88,10 @@ Anything broken here takes priority over the backlog.
 - [ ] Shareable PNG/CSV of any chart view. Step 1 done (2026-11-09): the Overview timeline has "Save image", a PNG with a
       title and period above the chart and, below it, which reading it shows (or that it is a demo or an offline snapshot),
       when it was saved, that it is unofficial, the EA source and licence, and the official-warnings pointer; a demo or
-      snapshot also says so in the file name. Left: the same for Analysis, Explore and History (`chartPicture()` in
-      `js/chart-image.js` takes any ECharts instance; each chart needs its own title and period lines), and a phone share
-      sheet (`navigator.share` with a file), which needs a real phone to test.
+      snapshot also says so in the file name. Step 2 done (2026-11-11): the same on Explore (see that entry). Left: Analysis
+      and History charts (`saveChartPicture()` in `js/ui.js` and `chartPicture()` in `js/chart-image.js` take any ECharts
+      instance; each chart needs its own title, period and caveat lines), and a phone share sheet (`navigator.share` with a
+      file), which needs a real phone to test.
 - [x] Data-quality panel, step 1: per-gauge completeness for the last 24 h in the Flood info drawer's "Data
       confidence" section (readings received of 96, longest gap), see 2026-11-03.
 - [ ] Data-quality panel, step 2: completeness for the window chosen in Explore, and for the Hydrology archive.
@@ -118,6 +119,19 @@ Anything broken here takes priority over the backlog.
   such events are censored, and the baseline must be observed. The correction changed the numbers I had written up (16 of 60
   within an hour became 7 of 51; middle half 0.7-14.9 h became 4.8-16.3 h; median 6.4 h became 8.0 h): the first figures
   overstated simultaneity, and the conclusion (no stable lag) holds on the corrected ones.
+- 2026-11-13 — daily/2026-11-13-narrow-phones — Health: site live on desktop+mobile, no console errors; all 7 gauges current
+  (24 min); no warnings within 40 km; EA shapes unchanged; deploy of #32 green; open PRs #30 and #31 (mine, awaiting review,
+  merged up with main on 12 Nov; not touched). Found while looking at the shipped readings table on a phone: at 360 px wide
+  (the most common Android width) every view scrolled sideways by 4 px, and at 320 px by 44 px. Cause: the header. The base
+  `.brand` rule says `flex: none`, so the phone rule's `min-width: 0` and the title's ellipsis never applied, and the brand plus
+  four 44 px touch-target buttons needed about 364 px. Two more, at 320 px only: Explore (32 px) and History (17 px), from
+  single-column grids written as `1fr` (which cannot shrink below the widest label) and an over-wide select. Fixes: the brand
+  may shrink; its name wraps onto two lines where one does not fit, and at 340 px and below only the logo shows (the link keeps
+  its accessible name); the grids are `minmax(0, 1fr)`; selects may shrink. Why it was missed: the "fits the screen" tests ran at
+  390 px only. Tests: two e2e steps (360 and 320 px) loading each of the five views and checking no sideways scroll, the
+  header's last button on screen, the name in full at 360 and logo-only at 320; they fail on the old CSS with the real
+  numbers (4 px, 44 px). Checked at 320, 360 and 390 px on all five views against the live EA, and by eye (light theme).
+  Not changed: desktop and print (the rules are phone-only).
 - 2026-11-12 — daily/2026-11-12-chart-table — Health: site live on desktop+mobile, no console errors, no overflow; all 7
   gauges current (21 min); no warnings within 40 km; EA shapes unchanged; deploys of #28 and #29 green (weekly refresh runs
   Monday); open PRs: #30 and #31 (mine, awaiting review; not touched). Change: the Overview timeline gets "Show the readings
@@ -135,6 +149,37 @@ Anything broken here takes priority over the backlog.
   removing the tabindex failed the table step. Two test-writing lessons: an axe run must wait for colour transitions to settle
   (it caught a range button mid-fade), and waiting for `getAnimations().finished` hangs for ever on animations that repeat (the
   live dot's pulse): wait only for finite ones. Looked at against the live EA on desktop, phone and dark.
+- 2026-11-11 — daily/2026-11-11-explore-image — Health: site live on desktop+mobile; the first health run logged one
+  console error per viewport (a readings-history request to the EA blocked "by CORS": the EA's gateway answered an error
+  page without the CORS header). That is the EA, not the site: the same request took 22 s on its first try (the EA slow spell
+  of 7 Nov again) and 0.5-0.7 s with the right header afterwards, two further runs on both viewports had no errors, and the
+  page had stayed in live mode with the latest values. 7 gauges current (Bransford 66 min); no warnings within 40 km; EA
+  shapes unchanged; deploys of #28 and #29 green; open PR: #30 (untouched). Change: "Save image" on Explore, the second chart
+  with a shareable picture. Title is the measure and the stations with data; the subtitle has the period (UK time), any station
+  with no readings, the page's own "Different datums: compare shapes and timing, not heights" warning when two or more
+  gauges share a stage axis, and, part-way through a playback, "replay at <time>: later readings are not shown" (the chart
+  and the picture show only the readings up to the playhead). Footer, demo and snapshot labelling and file names are shared
+  with the Overview picture (`explore-<measure>-<range>-chart-<date>-<time>.png`). Refactor: the safe ordering from the
+  Codex finding on #28 (load the picture code first, then read the chart and its caption in one synchronous step) now lives
+  once in `saveChartPicture()` in ui.js and both charts use it; the Overview's six e2e steps, including the slow-picture
+  race, still pass on it. Tests: 1 e2e step on Explore (two stations, partial playback, a second measure; PNG decoded, text
+  captured) and unit cases for the file name; negative controls: reading the chart before the code loads, and dropping the
+  replay wording, each failed the step that should. Looked at against the live EA on desktop and phone. Codex review found a
+  real inconsistency that was already on screen: a full redraw part-way through a replay (annotations toggled, theme changed, a
+  note added) put the whole window back on the chart while the scrubber stayed mid-way, so a saved picture would have said
+  "later readings are not shown" over a chart that showed them. Reproduced first (94 points plotted where the replay had 48),
+  then fixed at the cause: `draw()` now re-applies the playhead when a replay is part-way, so chart, scrubber and caption agree.
+- 2026-11-10 — daily/2026-11-10-delayed-legible — Health: site live on desktop+mobile, no console errors, no overflow;
+  6 of 7 gauges current (20-36 min); Bransford 141 min old, over the 2 h flag (it publishes late in batches, as before;
+  the pill says "1 gauge delayed" and its card says so); no warnings near Worcester (one elsewhere in England); EA shapes
+  unchanged; deploys of #28 and #29 green and the river diagram is live; no open PRs. Change: the first real delayed gauge
+  showed two flaws in yesterday's river diagram. (1) A delayed gauge faded all of its node, words included, so "delayed"
+  (the point) was the least readable text in the drawing and, at 60% opacity, under the 4.5:1 contrast minimum. Now only the
+  bar, dot and stem fade; the words stay at full contrast, in italic. (2) On the wide layout the Teme's curve touched the
+  longer "Within typical range · delayed" text; the confluence moved 40 units right (still above Kempsey, which is below it
+  on the river). Tests: 1 e2e step on the existing delayed-gauge scenario (words at effective opacity 1, graphics below 1,
+  italic, same ink as the name, text ends before the curve); it fails on the old CSS (0.6 !== 1). Looked at against the live
+  EA, desktop and phone. Lesson for the diagram: dim graphics, never text.
 - 2026-11-09 — ccr-a935da98-tkn87x (owner request: graphical and design improvements) — "The river at a glance": a
   schematic above the station cards with the gauges in the order the water passes them, the Teme joining the Severn below
   Diglis, and at each gauge a bar from its EA typical low to typical high filled to the latest reading (a line above the

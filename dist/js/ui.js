@@ -123,6 +123,28 @@ export function download(name, text, type = 'text/csv') {
   downloadBlob(name, new Blob([text], { type }));
 }
 
+// "Save image" for any chart (the picture is made by chart-image.js, which is fetched on the first click so it adds nothing to the
+// page's start-up). `describe()` is called once that code has arrived, and returns either a sentence saying why no picture can be made
+// or { echart, T, title, subtitle, footer, fileName }. The order matters: the chart can change while the code loads (another range, a
+// comparison switched on), so nothing about it is read until then, and from `describe()` to the chartPicture() call nothing waits (that
+// call takes the chart's pixels before its first await): the picture and its caption always come from the same drawing.
+export async function saveChartPicture(describe) {
+  let chartPicture;
+  try {
+    ({ chartPicture } = await import('./chart-image.js'));
+  } catch {
+    toast('The picture code could not be loaded. Check your connection and try again.', 'error');
+    return;
+  }
+  const spec = describe();
+  if (typeof spec === 'string') { toast(spec); return; }
+  try {
+    downloadBlob(spec.fileName, await chartPicture(spec.echart, spec));
+  } catch (e) {
+    toast(e.message || 'The picture could not be made.', 'error');
+  }
+}
+
 export async function copyLink(url = location.href) {
   try {
     await navigator.clipboard.writeText(url);
