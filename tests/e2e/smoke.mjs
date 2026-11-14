@@ -847,6 +847,33 @@ try {
   });
   await np.context.close();
 
+  /* ---------- Narrow phones: nothing wider than the screen (360 px is the most common Android width; 320 the smallest) ---------- */
+  for (const width of [360, 320]) {
+    await step(`${width} px phone: no view scrolls sideways, and the header's buttons stay on screen`, async () => {
+      for (const view of ['overview', 'map', 'analysis', 'explore', 'history']) {
+        const n = await open(browser, { path: `/?view=${view}`, viewport: { width, height: 740 } });
+        try {
+          await waitLive(n.page);
+          await n.page.waitForTimeout(800);
+          const m = await n.page.evaluate(() => {
+            const W = document.documentElement.clientWidth, name = document.querySelector('.brand b'), brand = document.querySelector('.brand span');
+            return {
+              over: document.documentElement.scrollWidth - W,
+              toolsRight: Math.max(...[...document.querySelectorAll('.topbar-tools > *')].map(e => Math.round(e.getBoundingClientRect().right))),
+              W, nameClipped: name.scrollWidth > name.clientWidth + 1, nameShown: getComputedStyle(brand).display !== 'none',
+              linkName: document.querySelector('.brand').getAttribute('aria-label'),
+            };
+          });
+          assert.ok(m.over <= 0, `${view}: the page is ${m.over}px wider than the screen`);
+          assert.ok(m.toolsRight <= m.W, `${view}: the header's last button ends at ${m.toolsRight} of ${m.W}`);
+          assert.match(m.linkName, /Worcester River/, 'the logo link always has its name');
+          if (width === 360) assert.ok(m.nameShown && !m.nameClipped, `${view}: at 360 px the name is shown in full (it wraps onto two lines)`);
+          else assert.ok(!m.nameShown, `${view}: at 320 px only the logo is shown`);
+        } finally { await n.context.close(); }
+      }
+    });
+  }
+
   /* ---------- Demo replay: real Feb 2020 readings, labelled everywhere ---------- */
   const demo = await open(browser, { path: '/?demo=feb2020' });
   await step('demo replay shows a flood state and is labelled as a demo', async () => {
