@@ -86,6 +86,19 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-11-13 — daily/2026-11-13-narrow-phones — Health: site live on desktop+mobile, no console errors; all 7 gauges current
+  (24 min); no warnings within 40 km; EA shapes unchanged; deploy of #32 green; open PRs #30 and #31 (mine, awaiting review,
+  merged up with main on 12 Nov; not touched). Found while looking at the shipped readings table on a phone: at 360 px wide
+  (the most common Android width) every view scrolled sideways by 4 px, and at 320 px by 44 px. Cause: the header. The base
+  `.brand` rule says `flex: none`, so the phone rule's `min-width: 0` and the title's ellipsis never applied, and the brand plus
+  four 44 px touch-target buttons needed about 364 px. Two more, at 320 px only: Explore (32 px) and History (17 px), from
+  single-column grids written as `1fr` (which cannot shrink below the widest label) and an over-wide select. Fixes: the brand
+  may shrink; its name wraps onto two lines where one does not fit, and at 340 px and below only the logo shows (the link keeps
+  its accessible name); the grids are `minmax(0, 1fr)`; selects may shrink. Why it was missed: the "fits the screen" tests ran at
+  390 px only. Tests: two e2e steps (360 and 320 px) loading each of the five views and checking no sideways scroll, the
+  header's last button on screen, the name in full at 360 and logo-only at 320; they fail on the old CSS with the real
+  numbers (4 px, 44 px). Checked at 320, 360 and 390 px on all five views against the live EA, and by eye (light theme).
+  Not changed: desktop and print (the rules are phone-only).
 - 2026-11-12 — daily/2026-11-12-chart-table — Health: site live on desktop+mobile, no console errors, no overflow; all 7
   gauges current (21 min); no warnings within 40 km; EA shapes unchanged; deploys of #28 and #29 green (weekly refresh runs
   Monday); open PRs: #30 and #31 (mine, awaiting review; not touched). Change: the Overview timeline gets "Show the readings
@@ -123,6 +136,17 @@ Anything broken here takes priority over the backlog.
   note added) put the whole window back on the chart while the scrubber stayed mid-way, so a saved picture would have said
   "later readings are not shown" over a chart that showed them. Reproduced first (94 points plotted where the replay had 48),
   then fixed at the cause: `draw()` now re-applies the playhead when a replay is part-way, so chart, scrubber and caption agree.
+- 2026-11-10 — daily/2026-11-10-delayed-legible — Health: site live on desktop+mobile, no console errors, no overflow;
+  6 of 7 gauges current (20-36 min); Bransford 141 min old, over the 2 h flag (it publishes late in batches, as before;
+  the pill says "1 gauge delayed" and its card says so); no warnings near Worcester (one elsewhere in England); EA shapes
+  unchanged; deploys of #28 and #29 green and the river diagram is live; no open PRs. Change: the first real delayed gauge
+  showed two flaws in yesterday's river diagram. (1) A delayed gauge faded all of its node, words included, so "delayed"
+  (the point) was the least readable text in the drawing and, at 60% opacity, under the 4.5:1 contrast minimum. Now only the
+  bar, dot and stem fade; the words stay at full contrast, in italic. (2) On the wide layout the Teme's curve touched the
+  longer "Within typical range · delayed" text; the confluence moved 40 units right (still above Kempsey, which is below it
+  on the river). Tests: 1 e2e step on the existing delayed-gauge scenario (words at effective opacity 1, graphics below 1,
+  italic, same ink as the name, text ends before the curve); it fails on the old CSS (0.6 !== 1). Looked at against the live
+  EA, desktop and phone. Lesson for the diagram: dim graphics, never text.
 - 2026-11-09 — ccr-a935da98-tkn87x (owner request: graphical and design improvements) — "The river at a glance": a
   schematic above the station cards with the gauges in the order the water passes them, the Teme joining the Severn below
   Diglis, and at each gauge a bar from its EA typical low to typical high filled to the latest reading (a line above the
