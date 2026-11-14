@@ -1,5 +1,5 @@
 // Overview: the "five-second" command centre for the primary gauge.
-import { $, $$, h, esc, countTo, mountChart, loadECharts, download, downloadBlob, toast, setBusy, errorBox } from '../ui.js';
+import { $, $$, h, esc, countTo, mountChart, loadECharts, download, saveChartPicture, setBusy, errorBox } from '../ui.js';
 import { timeSeriesOption, gaugeSVG, sparkline } from '../charts.js';
 import {
   change, currentRate, trend, rangePosition, rangeWords, freshness, verdict, splitWarnings, warningCount, rateSeries, breakGaps, notable, fmt, toCSV, windowed, time, gaps,
@@ -209,35 +209,22 @@ export function createOverview(ctx) {
 
   /* ---------- Timeline ---------- */
 
-  // "Save image": the chart as a PNG that carries its own title, period, source and date (see chart-image.js). The picture module is
-  // fetched on the first click, so it adds nothing to the page's start-up.
-  async function saveTimelineImage() {
-    let chartPicture;
-    try {
-      ({ chartPicture } = await import('../chart-image.js'));
-    } catch {
-      toast('The picture code could not be loaded. Check your connection and try again.', 'error');
-      return;
-    }
-    // The module may have taken a while to arrive (the first click), and the chart can change meanwhile (another range, the Bewdley
-    // comparison). So nothing about the chart is read until now, and from here to the chartPicture() call nothing waits (that call
-    // takes the chart's pixels before its first await): the picture and its caption always come from the same drawing.
-    const main = lastWindow?.find(x => x.id === PRIMARY);
-    if (!chart?.chart || !main || !lastDraw) { toast('The chart is not ready yet. Try again in a moment.'); return; }
-    if (!main.raw.length) { toast('There are no readings in this chart to save a picture of.'); return; } // e.g. an offline snapshot that is older than the range
-    const st = live.status, now = Date.now(), name = live.station(PRIMARY)?.label || 'Diglis';
-    const { label, compare, range } = lastDraw, end = main.raw.at(-1)[0];
-    try {
-      const blob = await chartPicture(chart.chart, {
-        T: ctx.T,
+  // "Save image": the chart as a PNG that carries its own title, period, source and date (see chart-image.js and saveChartPicture in ui.js).
+  function saveTimelineImage() {
+    return saveChartPicture(() => {
+      const main = lastWindow?.find(x => x.id === PRIMARY);
+      if (!chart?.chart || !main || !lastDraw) return 'The chart is not ready yet. Try again in a moment.';
+      if (!main.raw.length) return 'There are no readings in this chart to save a picture of.'; // e.g. an offline snapshot that is older than the range
+      const st = live.status, now = Date.now(), name = live.station(PRIMARY)?.label || 'Diglis';
+      const { label, compare, range } = lastDraw, end = main.raw.at(-1)[0];
+      return {
+        echart: chart.chart, T: ctx.T,
         title: compare ? `River level change since the start of the period: Bewdley (upstream) and ${name}` : `River Severn at ${name}, Worcester`,
         subtitle: `${label}, ${fmt.dateTime(main.raw[0][0])} to ${fmt.dateTime(end)} (${fmt.zone(end)}) · ${compare ? 'change in cm' : 'metres above station datum'} · UK time`,
         footer: imageFooter({ mode: st.mode, snapshotAt: st.snapshotAt, last: live.latestOf(PRIMARY), now }),
-      });
-      downloadBlob(imageFileName({ range, mode: st.mode, now }), blob);
-    } catch (e) {
-      toast(e.message || 'The picture could not be made.', 'error');
-    }
+        fileName: imageFileName({ range, mode: st.mode, now }),
+      };
+    });
   }
 
   // "Show the readings as a table": the real readings behind the chart, for people who cannot see it (a screen reader gets only its summary)
