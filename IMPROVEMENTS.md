@@ -85,6 +85,19 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-11-13 — daily/2026-11-13-narrow-phones — Health: site live on desktop+mobile, no console errors; all 7 gauges current
+  (24 min); no warnings within 40 km; EA shapes unchanged; deploy of #32 green; open PRs #30 and #31 (mine, awaiting review,
+  merged up with main on 12 Nov; not touched). Found while looking at the shipped readings table on a phone: at 360 px wide
+  (the most common Android width) every view scrolled sideways by 4 px, and at 320 px by 44 px. Cause: the header. The base
+  `.brand` rule says `flex: none`, so the phone rule's `min-width: 0` and the title's ellipsis never applied, and the brand plus
+  four 44 px touch-target buttons needed about 364 px. Two more, at 320 px only: Explore (32 px) and History (17 px), from
+  single-column grids written as `1fr` (which cannot shrink below the widest label) and an over-wide select. Fixes: the brand
+  may shrink; its name wraps onto two lines where one does not fit, and at 340 px and below only the logo shows (the link keeps
+  its accessible name); the grids are `minmax(0, 1fr)`; selects may shrink. Why it was missed: the "fits the screen" tests ran at
+  390 px only. Tests: two e2e steps (360 and 320 px) loading each of the five views and checking no sideways scroll, the
+  header's last button on screen, the name in full at 360 and logo-only at 320; they fail on the old CSS with the real
+  numbers (4 px, 44 px). Checked at 320, 360 and 390 px on all five views against the live EA, and by eye (light theme).
+  Not changed: desktop and print (the rules are phone-only).
 - 2026-11-12 — daily/2026-11-12-chart-table — Health: site live on desktop+mobile, no console errors, no overflow; all 7
   gauges current (21 min); no warnings within 40 km; EA shapes unchanged; deploys of #28 and #29 green (weekly refresh runs
   Monday); open PRs: #30 and #31 (mine, awaiting review; not touched). Change: the Overview timeline gets "Show the readings

@@ -99,7 +99,8 @@ h1.eyebrow { font-family: var(--sans); font-size: 11px; letter-spacing: .14em; m
   appearance: none; background: var(--surface2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238ea39f' stroke-width='1.6' fill='none'/%3E%3C/svg%3E") no-repeat right 10px center / 10px;
   border: 1px solid var(--line); border-radius: 10px; padding: 7px 30px 7px 11px; font-size: 13px; cursor: pointer; max-width: 100%;
 }
-.select { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.select { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); max-width: 100%; }
+.select select { min-width: 0; max-width: 100%; }
 input[type="date"] { background: var(--surface2); border: 1px solid var(--line); border-radius: 10px; padding: 6px 9px; font-size: 13px; }
 input[type="range"] { accent-color: var(--accent); }
 
@@ -510,9 +511,12 @@ main { max-width: 1320px; margin: 0 auto; padding: 22px 20px 40px; outline: none
   .bottom-nav [aria-current="page"] { color: var(--accent); }
   body { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
   .toasts { bottom: 86px; }
-  .explore { grid-template-columns: 1fr; }
+  .explore { grid-template-columns: minmax(0, 1fr); } /* not 1fr: that cannot shrink below the widest label, and a 320 px phone then scrolls sideways */
   .explore-side { position: static; max-height: none; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
-  .grid-2, .grid-hist { grid-template-columns: 1fr; }
+  .grid-2, .grid-hist { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 340px) {
+  .brand span { display: none; } /* just the logo: the link's accessible name is still "Worcester River home" */
 }
 @media (max-width: 640px) {
   :root { --topbar: 56px; }
@@ -522,9 +526,13 @@ main { max-width: 1320px; margin: 0 auto; padding: 22px 20px 40px; outline: none
   .status-pill { padding: 0; width: 36px; height: 36px; justify-content: center; border-radius: 10px; }
   .status-pill span { display: none; }
   .topbar-tools { gap: 6px; }
-  .brand { min-width: 0; }
+  /* The brand must be allowed to shrink (the base rule says flex: none), or the title's ellipsis never applies and on a 360 px phone the
+     header is wider than the screen and the page scrolls sideways. The logo mark keeps its size. */
+  .brand { min-width: 0; flex: 0 1 auto; }
+  .brand svg { flex: none; }
   .brand span { min-width: 0; }
-  .brand b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* The name wraps onto two lines ("Worcester / River") when one line does not fit, rather than being cut off with an ellipsis. */
+  .brand b { font-size: 14px; line-height: 1.15; overflow: hidden; overflow-wrap: normal; }
   .icon-btn, .intel-btn { width: 36px; height: 36px; padding: 0; justify-content: center; }
   main { padding: 14px 12px 30px; }
   .hero { grid-template-columns: 1fr; gap: 12px; }
