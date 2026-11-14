@@ -32,17 +32,22 @@ export function findEvents(downstream, opts = {}) {
   return events;
 }
 
-// One row per event that has an upstream rise; `unmatched` counts the events that do not (a local or tributary-driven rise) or whose upstream record has a gap.
+// One row per event with a clean upstream peak. Not every event can give one, and those are counted, never given a lag:
+//   unmatched: the upstream record has a gap in the window, or in the baseline of its peak, or the upstream gauge did not rise (a local or tributary-driven event);
+//   censored:  the upstream gauge's highest reading is the LAST one before the downstream peak, so it was still rising (or at its top) and has not been seen to peak:
+//              any lag measured from there would be a made-up 0, not a travel time.
 export function matchLags(events, upstream, opts = {}) {
-  const o = { ...DEFAULTS, ...opts }, map = grid(upstream), rows = []; let unmatched = 0;
+  const o = { ...DEFAULTS, ...opts }, map = grid(upstream), rows = []; let unmatched = 0, censored = 0;
+  const MIN_READINGS = 200; // of the 288 a 72 h window should hold
   for (const e of events) {
-    let best = null;
-    for (let t = e.t - o.riseWindowH * HOUR; t <= e.t; t += STEP) if (map.has(t) && (!best || map.get(t) > best.v)) best = { t, v: map.get(t) };
-    const low = best && span(map, best.t - o.riseWindowH * HOUR, best.t);
-    if (!best || span(map, e.t - o.riseWindowH * HOUR, e.t).length < 200 || best.v - minOf(low) < o.upstreamRiseMin) { unmatched++; continue; }
-    rows.push({ downstreamAt: e.t, downstream: e.v, upstreamAt: best.t, upstream: best.v, upstreamRise: best.v - minOf(low), lagHours: (e.t - best.t) / HOUR });
+    let best = null, last = null, seen = 0;
+    for (let t = e.t - o.riseWindowH * HOUR; t <= e.t; t += STEP) if (map.has(t)) { seen++; last = t; if (!best || map.get(t) > best.v) best = { t, v: map.get(t) }; }
+    const baseline = best && span(map, best.t - o.riseWindowH * HOUR, best.t);
+    if (!best || seen < MIN_READINGS || baseline.length < MIN_READINGS || best.v - minOf(baseline) < o.upstreamRiseMin) { unmatched++; continue; }
+    if (best.t === last) { censored++; continue; }
+    rows.push({ downstreamAt: e.t, downstream: e.v, upstreamAt: best.t, upstream: best.v, upstreamRise: best.v - minOf(baseline), lagHours: (e.t - best.t) / HOUR });
   }
-  return { rows, unmatched };
+  return { rows, unmatched, censored };
 }
 
 export function quantile(values, p) {
@@ -77,8 +82,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [up, down] = [await load('bewdley'), await load('diglis')];
   console.log(`EA Hydrology, 15-minute levels ${from}-${to}${goodOnly ? ', quality "Good" only' : ''}: ${up.length} Bewdley and ${down.length} Diglis readings\n`);
   for (const riseMin of [0.5, 1.0, 2.0]) {
-    const events = findEvents(down, { riseMin }), { rows, unmatched } = matchLags(events, up), s = summarise(rows);
-    console.log(`Diglis rise >= ${riseMin} m: ${events.length} events; ${rows.length} with a Bewdley rise >= ${DEFAULTS.upstreamRiseMin} m before it, ${unmatched} without`);
+    const events = findEvents(down, { riseMin }), { rows, unmatched, censored } = matchLags(events, up), s = summarise(rows);
+    console.log(`Diglis rise >= ${riseMin} m: ${events.length} events: ${rows.length} with a clean Bewdley peak (a rise of >= ${DEFAULTS.upstreamRiseMin} m, seen to peak before Diglis did); ${censored} where Bewdley was still rising at Diglis's peak; ${unmatched} with no Bewdley rise or a gap in its record`);
     if (rows.length) console.log(`  Bewdley peak -> Diglis peak, hours: min ${s.min.toFixed(1)}, middle half ${s.q1.toFixed(1)} to ${s.q3.toFixed(1)}, median ${s.median.toFixed(1)}, max ${s.max.toFixed(1)}; ${s.withinAnHour} of ${s.n} within an hour`);
   }
 }

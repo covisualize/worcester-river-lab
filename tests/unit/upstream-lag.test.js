@@ -58,6 +58,29 @@ test('a gap in the record is never judged: no event from a window with too few r
   assert.ok(rows.every(r => Number.isFinite(r.lagHours)), 'never NaN');
 });
 
+test('an upstream gauge that is still rising when the downstream one peaks has not peaked: it is censored, never given a lag of 0', () => {
+  const down = series(1.0, [[150, 1.2, 12]]), up = series(0.5, [[156, 1.0, 12]]); // Bewdley peaks 6 h AFTER Diglis
+  const { rows, unmatched, censored } = matchLags(findEvents(down), up);
+  assert.equal(rows.length, 0, JSON.stringify(rows));
+  assert.equal(censored, 1);
+  assert.equal(unmatched, 0);
+});
+
+test('an upstream peak that is only just before the downstream one is still a genuine near-simultaneous lag', () => {
+  const { rows, censored } = matchLags(findEvents(series(1.0, [[150, 1.2, 12]])), series(0.5, [[149, 1.0, 12]]));
+  assert.equal(censored, 0);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].lagHours, 1);
+});
+
+test('the upstream peak\'s own 72 h baseline must be observed too, not just the 72 h before the downstream event', () => {
+  // Downstream peaks at hour 150; upstream peaks at hour 90 but its readings only start at hour 78: 12 h of a 72 h baseline.
+  const up = series(0.5, [[90, 1.0, 12]], 10, t => t < T0 + 78 * HOUR);
+  const { rows, unmatched } = matchLags(findEvents(series(1.0, [[150, 1.2, 12]])), up);
+  assert.equal(rows.length, 0, 'no 60 h lag from an unobserved baseline');
+  assert.equal(unmatched, 1);
+});
+
 test('quantile and summarise: the middle half, the median and how many are within an hour', () => {
   assert.equal(quantile([0.5, 1, 2, 3, 10], 0.5), 2);
   assert.equal(quantile([0.5, 1, 2, 3, 10], 0.25), 1);
