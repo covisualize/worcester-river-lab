@@ -56,11 +56,26 @@ Anything broken here takes priority over the backlog.
       (EA `/id/floods` includes severity 4 "no longer in force").
 - [ ] Upstream travel-time explorer: cross-correlate Bewdley → Diglis level changes over
       recent events to show the *observed* lag range (descriptive, not a forecast).
-      Checked 2026-11-08: the live feed's last 28 days (15-minute data) contain one real upstream-driven rise
-      (23-31 Oct; Bewdley peak 27 Oct 01:15, Diglis 06:00 later) and a small one on 18 Oct whose Diglis peak came
-      1.8 h after Bewdley's (local rain, not the same water). A "typical lag" from that would be one event
-      presented as a pattern. Needs a longer 15-minute history with many events (check whether the EA Hydrology
-      API can supply years of 15-minute Bewdley and Diglis data) and a minimum number of events before it shows a number.
+      Checked 2026-11-08: the live feed's last 28 days contain one real upstream-driven rise, too few to say anything.
+      **Settled 2026-11-14: do not build a "typical lag" or "the water reaches Worcester in about X hours".** The EA Hydrology
+      API holds the long history that was missing: 15-minute levels at Diglis since 1986 and at Bewdley (first reading
+      dated 1970, probably a placeholder); 2016-2025 is complete for both (35,040 of 35,040 readings in every sampled
+      year; about 6,000 Diglis readings a year in 2021 and 2023 are not marked "Good"); one request per year.
+      `research/upstream-lag.mjs` (tested, reproducible, rule fixed in advance: a Diglis peak that rose at least 1 m in
+      72 h; upstream-driven if Bewdley rose at least 0.5 m before it) found, over 2016-2025, 66 such events: 51 with a
+      clean Bewdley peak, 9 where Bewdley was **still rising when Diglis peaked** (so it has no peak to measure from), and
+      6 with no usable Bewdley rise. For the 51 clean ones the gap from the Bewdley peak to the Diglis peak is **0.3 to 41
+      hours, middle half 4.8 to 16.3 hours (median 8.0 h), and 7 of the 51 are within an hour**. Same shape with "Good"
+      readings only (46 events: median 8.6 h, middle half 2.4-16.6 h), at a 0.5 m threshold (81 events: median 10.0 h,
+      5.0-15.3 h) and at 2 m (17 events: median 6.3 h, 1.0-15.3 h). A single number would mislead: half of the events
+      fall in a band 11 hours wide, and one upstream-driven event in seven has the upstream gauge still rising when
+      Worcester peaks. Seen live on 14 Nov: Bewdley +38 cm in 24 h while Diglis moved +1 cm, which is why an "upstream
+      is rising" banner on the Overview was also rejected. Correction, caught in review: the first version of the tool
+      took the last reading in the window as the "Bewdley peak" when Bewdley was still rising and reported a lag of 0,
+      which overstated simultaneity (16 of 60 events "within an hour"; 9 of those 16 were this artefact). Such events are
+      now counted as censored, and the upstream peak's own 72 h baseline must be observed too.
+      If wanted later, the honest form is the spread for past events ("in 51 events since 2016 the Bewdley peak came 0.3
+      to 41 h before Diglis's; half of them 5 to 16 h"), or per-event upstream context in the History view, never a prediction.
 - [x] Flow data, step 1: the map panel shows the EA's latest flow (m³/s, with time) for the gauges that
       publish it (Bewdley, Saxons Lode), labelled as EA-reported (see 2026-11-01).
 - [ ] Flow data, step 2: flow history as an Explore measure; needs the flow readings endpoint, a
@@ -86,6 +101,24 @@ Anything broken here takes priority over the backlog.
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-11-14 — daily/2026-11-14-upstream-lag-evidence — Health: site live on desktop+mobile, no console errors, no overflow;
+  all 7 gauges current (20-35 min); no warnings within 40 km; EA shapes unchanged; deploy of #32 green; open PRs #30, #31 and
+  #33 (mine, awaiting review; not touched). No site change today, on purpose. The health data showed Bewdley at 0.66 m,
+  +38 cm in 24 h (and already falling), while Diglis was +1 cm: the obvious idea was an "upstream is rising" line on the
+  Overview. Before building it I tested the question the backlog had been blocked on, whether past events show a usable
+  upstream-to-Worcester lag, and the answer is no (see the "Upstream travel-time explorer" item: for 51 clean events the
+  gap is 0.3 to 41 h, middle half 4.8 to 16.3 h; in 9 more Bewdley was still rising when Diglis peaked), so a banner or a
+  "typical lag" would have implied something the record does not support. What is kept: the Hydrology archive holds a complete
+  15-minute record for both gauges (the blocker in the backlog), and `research/upstream-lag.mjs` is a reproducible, tested
+  way to ask the question again (`node research/upstream-lag.mjs --cache DIR`; 10 years = 20 requests, about 30 s). Tests: 10
+  unit tests on synthetic series where the right answer is known (a 10 h lag, no upstream rise = unmatched, thresholds,
+  merging peaks within 48 h, gaps are never judged, the quantiles, and the two Codex cases below); breaking the upstream-rise
+  check or flipping the lag's sign each fails the right test. Codex review found a real flaw in my first version: when Bewdley
+  was still rising at Diglis's peak I took the last reading as the "Bewdley peak" and reported a lag of 0, and I never checked
+  the upstream peak's own 72 h baseline for gaps. Both reproduced with synthetic series first (the tests failed), then fixed:
+  such events are censored, and the baseline must be observed. The correction changed the numbers I had written up (16 of 60
+  within an hour became 7 of 51; middle half 0.7-14.9 h became 4.8-16.3 h; median 6.4 h became 8.0 h): the first figures
+  overstated simultaneity, and the conclusion (no stable lag) holds on the corrected ones.
 - 2026-11-13 — daily/2026-11-13-narrow-phones — Health: site live on desktop+mobile, no console errors; all 7 gauges current
   (24 min); no warnings within 40 km; EA shapes unchanged; deploy of #32 green; open PRs #30 and #31 (mine, awaiting review,
   merged up with main on 12 Nov; not touched). Found while looking at the shipped readings table on a phone: at 360 px wide
