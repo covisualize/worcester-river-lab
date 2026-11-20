@@ -17,7 +17,7 @@ export function h(html) {
 
 /* ---------- Theme ---------- */
 
-const TOKEN_NAMES = ['bg', 'surface', 'surface2', 'line', 'grid', 'text', 'muted', 'accent', 'accentSoft', 'water', 'rise', 'fall', 'alert', 'severe', 'ok', 'rain', 'sim'];
+const TOKEN_NAMES = ['bg', 'surface', 'surface2', 'line', 'grid', 'text', 'muted', 'accent', 'accentSoft', 'water', 'rise', 'fall', 'alert', 'severe', 'ok', 'rain', 'sim', 'mark'];
 
 export function tokens() {
   const cs = getComputedStyle(document.documentElement);

@@ -2,6 +2,7 @@
 import { $, $$, esc, setDemoExport, tokens, reducedMotion, toggleFullscreen, toast, resizeAll, errorBox, loadECharts } from './ui.js';
 import { createStore, decode, VIEWS } from './store.js';
 import { createLive } from './live.js';
+import { createMarksStore } from './marks.js';
 import { STATIONS, RANGES, PRIMARY, FLOODLINE } from './config.js';
 import { transform, lttb, fmt, freshness, delayedGauges, ukDayStart, ukDateInput, time, dataBasis, MAY_HAVE_CHANGED } from './data.js';
 import { createOverview } from './views/overview.js';
@@ -13,11 +14,12 @@ import { createIntel } from './views/intel.js';
 
 const store = createStore(decode(location.search));
 const live = createLive({ demo: store.get().demo });
+const marks = createMarksStore();
 const rangeGroups = [];
 const COLOR_ORDER = ['2085', ...STATIONS.map(s => s.id).filter(id => id !== '2085')];
 
 const ctx = {
-  store, live,
+  store, live, marks,
   T: null,
   animate: !reducedMotion(),
   theme: () => document.documentElement.dataset.theme || 'dark',
@@ -265,6 +267,9 @@ live.on('update', () => {
   refreshView(store.get().view);
   intel.render();
 });
+marks.subscribe(stationId => {
+  for (const v of mounted) views[v].onMarks?.(stationId);
+});
 
 const first = store.get();
 show(first.view);
@@ -279,4 +284,4 @@ setTimeout(() => {
 }, SLOW_AFTER_MS);
 
 // Expose a tiny debug handle for the end-to-end smoke test.
-window.__wr = { store, live, ctx };
+window.__wr = { store, live, ctx, marks };

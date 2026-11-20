@@ -82,7 +82,7 @@ export function refLines(lines, T, values = [], { fmtValue = v => `${v.toFixed(2
     slot = i && (l.value - sorted[i - 1].value) / extent < 0.08 ? (slot + 1) % positions.length : 0;
     return {
       yAxis: l.value, name: l.label,
-      lineStyle: { color: l.color, type: l.dashed === false || !dashed ? 'solid' : 'dashed', width: 1.2 },
+      lineStyle: { color: l.color, type: l.lineType ?? (l.dashed === false || !dashed ? 'solid' : 'dashed'), width: l.width ?? 1.2 },
       // A backing box keeps the label legible where it crosses the plotted lines.
       label: { formatter: l.text ?? `${l.label} ${fmtValue(l.value)}`, position: l.position ?? positions[slot], color: l.color, fontSize: 11, backgroundColor: T.surface, padding: [2, 5], borderRadius: 4 },
     };
@@ -95,14 +95,15 @@ const dot = c => `<span style="display:inline-block;width:8px;height:8px;border-
 
 export function timeSeriesOption({
   series, metric = 'stage', T, animate = true, bands = [], thresholds = [], annotations = [], userNotes = [],
-  zoom = null, slider = true, compact = false, span: spanIn,
+  zoom = null, slider = true, compact = false, span: spanIn, fitThresholds = false,
 }) {
   const M = METRICS[metric];
   const all = series.flatMap(s => s.data.filter(p => p[1] != null));
   const span = spanIn ?? (all.length ? all[all.length - 1][0] - all[0][0] : time.DAY);
   const rateById = Object.fromEntries(series.map(s => [s.id, s.raw ? rateSeries(s.raw) : []]));
   const single = series.length === 1;
-  const digits = metric === 'stage' ? levelDigits(all.map(p => p[1])) : null;
+  const fitVals = fitThresholds ? thresholds.map(th => th.value).filter(Number.isFinite) : [];
+  const digits = metric === 'stage' ? levelDigits([...all.map(p => p[1]), ...fitVals]) : null;
   const out = {
     ...base(T, animate, describeSeries(series, { metric })),
     color: series.map(s => s.color),
@@ -131,6 +132,10 @@ export function timeSeriesOption({
     xAxis: { type: 'time', ...axisCommon(T), splitLine: { show: false }, axisLabel: { ...axisCommon(T).axisLabel, formatter: timeLabel(span), rich: { d: { fontWeight: 'bold', color: T.text, fontSize: 11 } } } },
     yAxis: {
       type: 'value', scale: metric !== 'range', ...axisCommon(T),
+      ...(fitVals.length ? {
+        min: v => { const lo = Math.min(v.min, ...fitVals), hi = Math.max(v.max, ...fitVals), pad = (hi - lo) * 0.08 || 0.05; return +(lo - pad).toFixed(2); },
+        max: v => { const lo = Math.min(v.min, ...fitVals), hi = Math.max(v.max, ...fitVals), pad = (hi - lo) * 0.08 || 0.05; return +(hi + pad).toFixed(2); },
+      } : {}),
       name: compact ? '' : M.unit, nameTextStyle: { color: T.muted, fontSize: 11, align: 'right' },
       axisLabel: { ...axisCommon(T).axisLabel, formatter: v => (metric === 'stage' ? v.toFixed(digits) : metric === 'aod' ? v.toFixed(1) : String(Math.round(v * 10) / 10)) },
     },
@@ -290,7 +295,7 @@ export function archiveOption({ series, T, animate = true, thresholds = [], even
     dataZoom: [{ type: 'inside', filterMode: 'none', zoomOnMouseWheel: 'shift', ...(zoom || {}) }, { type: 'slider', height: 30, bottom: 14, brushSelect: true, borderColor: T.line, fillerColor: T.accentSoft, handleStyle: { color: T.accent }, textStyle: { color: T.muted, fontSize: 10 }, labelFormatter: v => fmt.dateYear(v), ...(zoom || {}) }],
     series: series.map((s, i) => ({
       name: s.name, type: 'line', data: s.data, showSymbol: false, sampling: 'lttb', lineStyle: { width: 1.4, color: s.color },
-      markLine: i === 0 && thresholds.length ? { silent: true, symbol: 'none', data: refLines(thresholds.map(th => ({ ...th, text: th.label })), T, s.data.map(p => p[1])) } : undefined,
+      markLine: i === 0 && thresholds.length ? { silent: true, symbol: 'none', data: refLines(thresholds.map(th => ({ ...th, text: th.text ?? th.label })), T, s.data.map(p => p[1])) } : undefined,
       markPoint: i === 0 && events.length ? {
         symbol: 'circle', symbolSize: 9, itemStyle: { color: T.rise, borderColor: T.surface, borderWidth: 2 },
         data: events.map((e, k) => ({ coord: [e.t, e.value], name: `#${k + 1}`, label: { show: k < 5, formatter: `#${k + 1}`, position: 'top', color: T.text, fontSize: 10 } })),
@@ -320,7 +325,7 @@ export function eventsOverlayOption({ events, T, animate = true, reference = [] 
     series: [
       ...events.map(e => ({ name: e.name, type: 'line', data: e.data, smooth: false, showSymbol: false, lineStyle: { width: 2 }, emphasis: { focus: 'series' } })),
       ...(reference.length ? [{
-        name: 'Reference levels', type: 'line', data: [], markLine: { silent: true, symbol: 'none', data: refLines(reference.map(r => ({ ...r, text: r.label })), T, events.flatMap(e => e.data.map(p => p[1]))) },
+        name: 'Reference levels', type: 'line', data: [], markLine: { silent: true, symbol: 'none', data: refLines(reference.map(r => ({ ...r, text: r.text ?? r.label })), T, events.flatMap(e => e.data.map(p => p[1]))) },
       }] : []),
     ],
   };
@@ -407,9 +412,11 @@ export function sparkline(series, { width = 120, height = 34, color = 'currentCo
 
 // Semicircular gauge with EA reference levels. Rendered as SVG so the needle
 // can animate with CSS (and stay still under prefers-reduced-motion).
-export function gaugeSVG({ value, scale, T, label = 'Latest level' }) {
-  const max = Math.max(scale?.scaleMax || 0, (scale?.maxOnRecord?.value || 0) * 1.05, (value || 0) * 1.1, 1);
-  const min = Math.min(0, value ?? 0);
+export function gaugeSVG({ value, scale, T, label = 'Latest level', marks = [] }) {
+  const validMarks = (marks || []).filter(m => Number.isFinite(m?.value));
+  const markVals = validMarks.map(m => m.value);
+  const max = Math.max(scale?.scaleMax || 0, (scale?.maxOnRecord?.value || 0) * 1.05, (value || 0) * 1.1, ...markVals.map(v => v * 1.05), 1);
+  const min = Math.min(0, value ?? 0, ...markVals);
   const cx = 160, cy = 150, r = 118;
   const ang = v => Math.PI * (1 - (Math.max(min, Math.min(max, v)) - min) / (max - min));
   const pt = (v, rr = r) => [cx + rr * Math.cos(ang(v)), cy - rr * Math.sin(ang(v))];
@@ -431,13 +438,20 @@ export function gaugeSVG({ value, scale, T, label = 'Latest level' }) {
     const anchor = tx < cx - 10 ? 'end' : tx > cx + 10 ? 'start' : 'middle';
     return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${color}" stroke-width="2"/><text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="${anchor}" font-size="12" fill="${color}">${esc(text)}</text>`;
   };
+  const markColor = T.mark || T.sim;
+  const markPins = validMarks.map(m => {
+    const [a1, b1] = pt(m.value, r - 10), [a2, b2] = pt(m.value, r + 13);
+    return `<line x1="${a1.toFixed(1)}" y1="${b1.toFixed(1)}" x2="${a2.toFixed(1)}" y2="${b2.toFixed(1)}" stroke="${markColor}" stroke-width="2.2" stroke-dasharray="3 2"/><circle cx="${a2.toFixed(1)}" cy="${b2.toFixed(1)}" r="3.5" fill="${markColor}" stroke="${T.surface}" stroke-width="1.2"><title>Your mark: ${esc(m.label)} (${m.value.toFixed(2)} m)</title></circle>`;
+  }).join('');
   const deg = value == null ? -90 : -90 + (1 - ang(value) / Math.PI) * 180;
-  return `<svg viewBox="-60 0 440 196" class="gauge" role="img" aria-label="${esc(label)}: ${value == null ? 'unavailable' : value.toFixed(2) + ' metres'}. Typical range ${low ?? '?'} to ${high ?? '?'} metres; highest recent ${hr ?? '?'} m; maximum on record ${rec ?? '?'} m.">
+  const markAria = validMarks.length ? ` Personal marks: ${validMarks.map(m => `${m.label} at ${m.value.toFixed(2)} m`).join(', ')}.` : '';
+  return `<svg viewBox="-60 0 440 196" class="gauge" role="img" aria-label="${esc(label)}: ${value == null ? 'unavailable' : value.toFixed(2) + ' metres'}. Typical range ${low ?? '?'} to ${high ?? '?'} metres; highest recent ${hr ?? '?'} m; maximum on record ${rec ?? '?'} m.${esc(markAria)}">
   ${bands}
   ${tick(low, `Typical low ${low?.toFixed(2)}`, T.muted)}${tick(high, `Typical high ${high?.toFixed(2)}`, T.text)}${tick(hr, '', T.alert)}${tick(rec, '', T.severe)}
+  ${markPins}
   <text x="${cx - r}" y="${cy + 18}" text-anchor="middle" font-size="10" fill="${T.muted}">${min.toFixed(0)} m</text><text x="${cx + r}" y="${cy + 18}" text-anchor="middle" font-size="10" fill="${T.muted}">${max.toFixed(1)} m</text>
   <g class="gauge-needle" style="transform-origin:${cx}px ${cy}px;transform:rotate(${deg.toFixed(2)}deg)"><path d="M${cx - 4} ${cy}L${cx} ${cy - r + 22}L${cx + 4} ${cy}Z" fill="${T.text}"/></g>
   <circle cx="${cx}" cy="${cy}" r="9" fill="${T.text}"/><circle cx="${cx}" cy="${cy}" r="4" fill="${T.bg}"/>
   <text x="${cx}" y="${cy + 38}" text-anchor="middle" font-size="22" font-weight="600" fill="${T.text}" style="font-variant-numeric:tabular-nums">${value == null ? '—' : value.toFixed(2) + ' m'}</text>
-</svg><div class="gauge-legend">${Number.isFinite(hr) ? `<span><i style="background:${T.alert}"></i>Highest recent ${hr.toFixed(2)} m</span>` : ''}${Number.isFinite(rec) ? `<span><i style="background:${T.severe}"></i>Record ${rec.toFixed(2)} m</span>` : ''}</div>`;
+</svg><div class="gauge-legend">${Number.isFinite(hr) ? `<span><i style="background:${T.alert}"></i>Highest recent ${hr.toFixed(2)} m</span>` : ''}${Number.isFinite(rec) ? `<span><i style="background:${T.severe}"></i>Record ${rec.toFixed(2)} m</span>` : ''}${validMarks.map(m => `<span><i class="is-mark" style="background:${markColor}"></i>Your mark: ${esc(m.label)} ${m.value.toFixed(2)} m</span>`).join('')}</div>`;
 }

@@ -5,9 +5,11 @@ import {
   METRICS, breakGaps, rateSeries, currentRate, trend, rangePosition, fmt, toCSV, hourlyRain, quantile, simulateLinear, hoursToReach, time, stats,
 } from '../data.js';
 import { STATIONS, RAIN_GAUGES, RANGES } from '../config.js';
+import { partitionForChart, toThresholds } from '../marks.js';
+import { renderMarksManager } from '../marks-ui.js';
 
 export function createAnalysis(ctx) {
-  const { store, live } = ctx;
+  const { store, live, marks } = ctx;
   const charts = {};
   const local = { rateStation: null, rateRange: '7d', rainGauge: '1773', rainStation: '2085', rainRange: '7d', simStation: null };
   const req = { multi: 0, rate: 0, rain: 0 };
@@ -91,7 +93,13 @@ export function createAnalysis(ctx) {
         const raw = results[k].status === 'fulfilled' ? results[k].value.data : [];
         return { id: sid, name: st.label, raw, color: ctx.colorOf(sid), data: breakGaps(ctx.transformFor(raw, metric, st)), highlight: sid === s.station };
       });
-      charts.multi.set(timeSeriesOption({ series: multiData, metric, T: ctx.T, animate: ctx.animate, span: to - from }));
+      const singleStage = multiData.length === 1 && metric === 'stage';
+      const { visible: visMarks } = singleStage ? partitionForChart(marks.list(multiData[0].id), multiData[0].raw.map(p => p[1])) : { visible: [] };
+      charts.multi.set(timeSeriesOption({
+        series: multiData, metric, T: ctx.T, animate: ctx.animate, span: to - from,
+        thresholds: singleStage ? toThresholds(visMarks, ctx.T) : [],
+        fitThresholds: singleStage && visMarks.length > 0,
+      }));
       const missing = multiData.filter(x => !x.raw.length).map(x => x.name);
       $('#an-multi-sub').textContent = `${METRICS[metric].label} · ${label} · ${multiData.length} station${multiData.length > 1 ? 's' : ''}`;
       $('#an-multi-note').textContent = `${missing.length ? `No data for ${missing.join(', ')}. ` : ''}Hover to compare stations at the same moment; Shift+scroll or drag the handles to zoom.`;
@@ -110,8 +118,12 @@ export function createAnalysis(ctx) {
     const id = store.get().station;
     $('#an-gauge-station').innerHTML = stationOptions(id);
     const st = live.station(id), last = live.latestOf(id), sc = st.scale || {};
-    $('#an-gauge').innerHTML = gaugeSVG({ value: last?.[1], scale: sc, T: ctx.T, label: `${st.label} latest level` });
+    const stMarks = marks.list(id);
+    $('#an-gauge').innerHTML = gaugeSVG({ value: last?.[1], scale: sc, T: ctx.T, label: `${st.label} latest level`, marks: stMarks });
     const row = (c, k, v, d) => `<tr><td><span class="sw" style="background:${c}"></span>${k}</td><td>${v != null ? v.toFixed(3) + ' m' : '—'}</td><td>${d || ''}</td><td>${v != null && last ? fmt.signed((last[1] - v) * 100, 0, ' cm') : '—'}</td></tr>`;
+    const markRows = stMarks.length
+      ? `<tbody><tr class="ref-divider"><th colspan="4" scope="colgroup">Your personal marks (browser only · not official)</th></tr>${stMarks.map(m => row(ctx.T.mark || ctx.T.sim, esc(m.label), m.value, 'Personal note')).join('')}</tbody>`
+      : '';
     $('#an-ref').innerHTML = `<thead><tr><th>EA reference level</th><th>Level</th><th>Date</th><th>Latest vs level</th></tr></thead><tbody>
       ${row(ctx.T.text, 'Latest reading', last?.[1], last ? fmt.dateTime(last[0]) : '')}
       ${row(ctx.T.fall, 'Typical range low', sc.low)}
@@ -119,7 +131,17 @@ export function createAnalysis(ctx) {
       ${row(ctx.T.alert, 'Highest recent', sc.highestRecent?.value, sc.highestRecent ? fmt.dateYear(sc.highestRecent.t) : '')}
       ${row(ctx.T.severe, 'Maximum on record', sc.maxOnRecord?.value, sc.maxOnRecord ? fmt.dateYear(sc.maxOnRecord.t) : '')}
       ${row(ctx.T.muted, 'Minimum on record', sc.minOnRecord?.value, sc.minOnRecord ? fmt.dateYear(sc.minOnRecord.t) : '')}
-    </tbody><caption class="note" style="caption-side:bottom;text-align:left;padding-top:8px">All values are EA station metadata (stageScale) in metres above station datum. None of them is an official flood-warning trigger.</caption>`;
+    </tbody>${markRows}<caption class="note" style="caption-side:bottom;text-align:left;padding-top:8px">EA rows are station metadata (stageScale) in metres above station datum. None of them — nor any personal mark — is an official flood-warning trigger.</caption>`;
+    const sum = $('#an-marks-details > summary');
+    if (sum) sum.textContent = stMarks.length ? `Manage my marks for ${st.label} (${stMarks.length})` : `Manage my marks for ${st.label}`;
+    renderMarksManager($('#an-marks-box'), {
+      prefix: 'an-mk',
+      stationId: id,
+      stationLabel: st.label,
+      latest: last,
+      isDemo: live.status.mode === 'demo',
+      marksStore: marks,
+    });
   }
 
   function drawBars() {
@@ -208,11 +230,15 @@ export function createAnalysis(ctx) {
       { value: sc.high, label: 'Typical high', color: ctx.T.water },
       { value: sc.highestRecent?.value, label: 'Highest recent', color: ctx.T.alert },
       { value: sc.maxOnRecord?.value, label: 'Record', color: ctx.T.severe },
+      ...toThresholds(marks.list(local.simStation), ctx.T),
     ].filter(r => Number.isFinite(r.value));
     $('#sim-out').innerHTML = refs.map(r => {
       const hrs = hoursToReach(last[1], r.value, rate);
       const already = last[1] >= r.value;
-      return `<div class="stat"><span>${esc(r.label)} (${r.value.toFixed(2)} m)</span><strong>${already ? 'Already above' : hrs == null ? 'Not reached' : hrs <= hours ? `~${hrs < 1 ? Math.round(hrs * 60) + ' min' : hrs.toFixed(1) + ' h'}` : `> ${hours} h`}</strong><small>Simulation only, at a constant ${fmt.signed(rate, 1, ' cm/h')}; not a forecast</small></div>`;
+      const caveat = r.personal
+        ? `Your personal mark · simulation only, at a constant ${fmt.signed(rate, 1, ' cm/h')}; not a forecast`
+        : `Simulation only, at a constant ${fmt.signed(rate, 1, ' cm/h')}; not a forecast`;
+      return `<div class="stat${r.personal ? ' is-mark' : ''}"><span>${esc(r.label)} (${r.value.toFixed(2)} m)</span><strong>${already ? 'Already above' : hrs == null ? 'Not reached' : hrs <= hours ? `~${hrs < 1 ? Math.round(hrs * 60) + ' min' : hrs.toFixed(1) + ' h'}` : `> ${hours} h`}</strong><small>${caveat}</small></div>`;
     }).join('');
     charts.sim.set(simulationOption({ observed, simulated: sim, thresholds: refs, T: ctx.T, animate: ctx.animate }));
   }
@@ -225,5 +251,11 @@ export function createAnalysis(ctx) {
       if (s.station !== prev.station) { drawGauge(); if (s.compare.includes(s.station)) drawMulti(); }
     },
     onData() { drawMulti(); drawGauge(); drawBars(); drawRate(); drawRain(); drawSim(); },
+    onMarks() {
+      drawGauge();
+      drawSim();
+      const s = store.get();
+      if (s.compare.length === 1 && s.metric === 'stage') drawMulti();
+    },
   };
 }
