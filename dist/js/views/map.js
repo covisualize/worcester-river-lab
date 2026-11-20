@@ -5,6 +5,7 @@ import { sparkline } from '../charts.js';
 import { HOME, STATIONS, RAIN_GAUGES, SEVERITY } from '../config.js';
 import { change, currentRate, trend, rangePosition, freshness, fmt, totalRain, time } from '../data.js';
 import * as api from '../api.js';
+import { renderMarksManager } from '../marks-ui.js';
 
 const RAINVIEWER = 'https://api.rainviewer.com/public/weather-maps.json';
 
@@ -40,8 +41,8 @@ export function gaugeIcon(T, { label, key, primary, hi, dim }) {
 }
 
 export function createMapView(ctx) {
-  const { live, store } = ctx;
-  let map, base, layers = {}, markers = {}, placeMarker, floodAreas = null, warnLoaded = false, rainLoaded = false, radarLoaded = false;
+  const { live, store, marks } = ctx;
+  let map, base, layers = {}, markers = {}, placeMarker, openId = null, floodAreas = null, warnLoaded = false, rainLoaded = false, radarLoaded = false;
 
   function mount() {
     map = L.map('map', { zoomControl: false, preferCanvas: false, worldCopyJump: false }).setView([HOME.lat, HOME.lng], HOME.zoom);
@@ -118,7 +119,9 @@ export function createMapView(ctx) {
     const sc = st.scale || {};
     const row = (k, v) => `<dt>${esc(k)}</dt><dd>${v}</dd>`;
     const panel = $('#map-panel');
+    openId = id;
     panel.hidden = false;
+    const mCount = marks.list(id).length;
     // Only a flow reading from the same time as the level shown beside it (never a stale or unrelated one).
     const flowShown = st.flow && last && Math.abs(st.flow.t - last[0]) <= 2 * 3600e3;
     panel.innerHTML = `
@@ -138,6 +141,10 @@ export function createMapView(ctx) {
         ${row('Stage datum (EA)', sc.datum != null ? `${sc.datum} m above Ordnance Datum` : '—')}
         ${row('EA station / measure', `<span class="mono" style="font-size:11px">${esc(id)} · ${esc(st.levelMeasure || '—')}</span>`)}
       </dl>
+      <details class="marks-details map-marks" id="map-panel-marks"${mCount ? ' open' : ''}>
+        <summary id="map-marks-summary">My marks${mCount ? ` (${mCount})` : ''}</summary>
+        <div id="map-marks-box"></div>
+      </details>
       <div class="station-actions">
         <button type="button" class="btn btn-small" data-go="explore">Explore</button>
         <button type="button" class="btn btn-small btn-ghost" data-go="analysis">Gauge</button>
@@ -147,10 +154,30 @@ export function createMapView(ctx) {
     panel.querySelector('.close').onclick = closePanel;
     panel.querySelector('[data-go="explore"]').onclick = () => ctx.go('explore', { compare: [id], station: id });
     panel.querySelector('[data-go="analysis"]').onclick = () => ctx.go('analysis', { station: id });
+    drawPanelMarks(id);
     Object.entries(markers).forEach(([k, m]) => m.getElement()?.firstElementChild?.classList.toggle('is-hi', k === id));
   }
 
+  function drawPanelMarks(id) {
+    const box = $('#map-marks-box');
+    if (!box || !id) return;
+    const st = live.station(id);
+    const count = marks.list(id).length;
+    const sum = $('#map-marks-summary');
+    if (sum) sum.textContent = count ? `My marks (${count})` : 'My marks';
+    renderMarksManager(box, {
+      prefix: 'map-mk',
+      stationId: id,
+      stationLabel: st?.label || id,
+      latest: live.latestOf(id),
+      isDemo: live.status.mode === 'demo',
+      marksStore: marks,
+      compact: true,
+    });
+  }
+
   function closePanel() {
+    openId = null;
     $('#map-panel').hidden = true;
     Object.values(markers).forEach(m => m.getElement()?.firstElementChild?.classList.remove('is-hi'));
   }
@@ -260,8 +287,11 @@ export function createMapView(ctx) {
     },
     onData() {
       drawStations();
-      if (!$('#map-panel').hidden) openPanel(store.get().station);
+      if (!$('#map-panel').hidden) openPanel(openId || store.get().station);
       if (warnLoaded) loadWarnings();
+    },
+    onMarks(sid) {
+      if (openId && !$('#map-panel').hidden && (!sid || sid === openId)) drawPanelMarks(openId);
     },
     onTheme() {
       map.removeLayer(base);

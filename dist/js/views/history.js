@@ -4,15 +4,17 @@ import { archiveOption, eventsOverlayOption, calendarOption } from '../charts.js
 import { topEvents, eventWindow, percentileRank, fmt, toCSV, time, parseTime, ukDateInput } from '../data.js';
 import { STATIONS, PRIMARY } from '../config.js';
 import { getStatic } from '../api.js';
+import { countDaysExceeded, toThresholds } from '../marks.js';
 
 const QUALITY = { G: 'Good', U: 'Unchecked', S: 'Suspect', E: 'Estimated', '?': 'Not stated' };
 
 export function createHistory(ctx) {
-  const { live } = ctx;
+  const { live, marks } = ctx;
   let archive = null, station = PRIMARY, events = [], picked = new Set(), year = new Date().getUTCFullYear(), charts = {};
 
   const ids = () => STATIONS.filter(s => archive?.stations[s.id]).map(s => s.id);
   const rowsOf = id => archive.stations[id].rows;
+  const markLines = id => toThresholds(marks.list(id), ctx.T).map(t => ({ ...t, text: `${t.label} ${t.value.toFixed(2)} m` }));
 
   function mount() {
     charts.long = mountChart($('#hi-chart'));
@@ -65,9 +67,29 @@ export function createHistory(ctx) {
       stat('Data quality (daily max)', `${Math.round(((q.G || 0) / rows.length) * 100)}% good`, Object.entries(q).filter(([k]) => k !== 'G').map(([k, n]) => `${n} ${QUALITY[k].toLowerCase()}`).join(', ') || 'all good'),
     ].join('');
 
+    const stMarks = marks.list(station);
+    const hiMarks = $('#hi-marks');
+    if (hiMarks) {
+      if (!stMarks.length) { hiMarks.hidden = true; hiMarks.innerHTML = ''; }
+      else {
+        hiMarks.hidden = false;
+        hiMarks.innerHTML = stMarks.map(m => {
+          const ex = countDaysExceeded(rows, m.value);
+          const sub = ex.count
+            ? `${ex.pct < 0.1 ? '< 0.1' : ex.pct.toFixed(1)}% of archived days · most recently ${fmt.dateYear(Date.parse(ex.lastDate + 'T12:00:00Z'))}`
+            : 'Never reached in archived daily maxima since 2000';
+          return `<div class="stat is-mark"><span><i class="mark-dot" aria-hidden="true"></i>Your mark · ${esc(m.label)} (${m.value.toFixed(2)} m)</span><strong>${ex.count.toLocaleString('en-GB')} day${ex.count === 1 ? '' : 's'}</strong><small>${esc(sub)} · browser-only note</small></div>`;
+        }).join('');
+      }
+    }
+
     charts.long.set(archiveOption({
       series: [{ name: st.label, color: ctx.colorOf(station), data: rows.map(r => [Date.parse(r[0] + 'T12:00:00Z'), r[1], r[3]]) }],
-      thresholds: [sc.high != null && { value: sc.high, label: 'Typical high', color: ctx.T.water }, sc.highestRecent?.value && { value: sc.highestRecent.value, label: 'Highest recent (EA)', color: ctx.T.alert }].filter(Boolean),
+      thresholds: [
+        sc.high != null && { value: sc.high, label: 'Typical high', color: ctx.T.water },
+        sc.highestRecent?.value && { value: sc.highestRecent.value, label: 'Highest recent (EA)', color: ctx.T.alert },
+        ...markLines(station),
+      ].filter(Boolean),
       events, T: ctx.T, animate: ctx.animate,
     }));
     drawEvents();
@@ -92,7 +114,11 @@ export function createHistory(ctx) {
     const evs = events.filter(e => picked.has(e.date)).map(e => ({ name: fmt.dateYear(e.t + 12 * time.HOUR), data: eventWindow(rows, e.date, 15) }));
     charts.overlay.set(eventsOverlayOption({
       events: evs, T: ctx.T, animate: ctx.animate,
-      reference: [last && { value: last[1], label: `Latest ${last[1].toFixed(2)} m`, color: ctx.T.accent, position: 'insideStartBottom' }, sc.high != null && { value: sc.high, label: 'Typical high', color: ctx.T.water }].filter(Boolean),
+      reference: [
+        last && { value: last[1], label: `Latest ${last[1].toFixed(2)} m`, color: ctx.T.accent, position: 'insideStartBottom' },
+        sc.high != null && { value: sc.high, label: 'Typical high', color: ctx.T.water },
+        ...markLines(station),
+      ].filter(Boolean),
     }));
   }
 
@@ -117,6 +143,7 @@ export function createHistory(ctx) {
     render() { load(); },
     onState(s, prev) { if (s.station !== prev.station && archive?.stations[s.station]) { station = s.station; picked = new Set(); $('#hi-station').value = station; draw(); } },
     onData() { if (archive) draw(); },
+    onMarks(sid) { if (archive && (!sid || sid === station)) draw(); },
     setStation(id) { if (archive?.stations[id] || !archive) station = id; },
   };
 }

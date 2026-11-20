@@ -5,10 +5,21 @@ import {
   change, currentRate, trend, rangePosition, rangeWords, freshness, verdict, splitWarnings, warningCount, rateSeries, breakGaps, notable, fmt, toCSV, windowed, time, gaps,
 } from '../data.js';
 import { PRIMARY, STATIONS, SEVERITY, RULES } from '../config.js';
+import { describeDistance, partitionForChart, toThresholds } from '../marks.js';
+import { renderMarksManager } from '../marks-ui.js';
 
 export function createOverview(ctx) {
-  const { store, live } = ctx;
+  const { store, live, marks } = ctx;
   let chart, sortKey = 'river', reqId = 0, lastWindow = null;
+
+  function openMarksBox(focusInput = false) {
+    const box = $('#tl-marks-box');
+    const btn = $('#tl-marks-toggle');
+    box.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    drawMarksBox();
+    if (focusInput) box.querySelector('input[name="label"]')?.focus();
+  }
 
   function mount() {
     chart = mountChart($('#tl-chart'));
@@ -17,7 +28,12 @@ export function createOverview(ctx) {
       store.set({ range });
     }, true);
     ctx.bindCustomForm($('#tl-custom'));
-    ['#tl-band', '#tl-notes', '#tl-upstream'].forEach(s => $(s).addEventListener('change', drawTimeline));
+    ['#tl-band', '#tl-notes', '#tl-upstream', '#tl-marks-all'].forEach(s => $(s).addEventListener('change', drawTimeline));
+    $('#tl-marks-toggle').onclick = () => {
+      const box = $('#tl-marks-box');
+      if (box.hidden) openMarksBox(true);
+      else { box.hidden = true; $('#tl-marks-toggle').setAttribute('aria-expanded', 'false'); }
+    };
     $('#tl-csv').onclick = () => {
       if (!lastWindow) return;
       download(`diglis-${store.get().range}.csv`, toCSV(['timestamp_utc', 'uk_local_time', 'station', 'level_m_asd'],
@@ -74,9 +90,47 @@ export function createOverview(ctx) {
     } else s = 'No recent reading is available from the Environment Agency. ';
     s += warningSentence();
     $('#ov-summary').innerHTML = s;
-    $('#ov-gauge').innerHTML = gaugeSVG({ value: last?.[1], scale: st?.scale, T: ctx.T, label: 'Diglis latest level' });
+    const diglisMarks = marks.list(PRIMARY);
+    $('#ov-gauge').innerHTML = gaugeSVG({ value: last?.[1], scale: st?.scale, T: ctx.T, label: 'Diglis latest level', marks: diglisMarks });
     drawWarnCard();
     drawBanner();
+    drawMarksStrip();
+    drawMarksBox();
+  }
+
+  function drawMarksStrip() {
+    const list = marks.list(PRIMARY);
+    const btn = $('#tl-marks-toggle');
+    if (btn) btn.textContent = list.length ? `My marks (${list.length})` : 'My marks';
+    const strip = $('#ov-marks-strip');
+    if (!strip) return;
+    if (!list.length) { strip.hidden = true; strip.innerHTML = ''; return; }
+    const last = live.latestOf(PRIMARY);
+    strip.hidden = false;
+    strip.innerHTML = `
+      <span class="marks-strip-head"><i class="mark-dot" aria-hidden="true"></i><b>Your marks</b><small>browser only · not official</small></span>
+      <div class="marks-strip-items">${list.map(m => {
+        const d = describeDistance(last?.[1], m.value);
+        return `<span class="mark-pill" data-k="${d?.status || 'none'}"><b>${esc(m.label)}</b><span class="mono">${m.value.toFixed(2)} m</span>${d ? `<em>${esc(d.text)}</em>` : ''}</span>`;
+      }).join('')}</div>
+      <button type="button" class="btn btn-ghost btn-small marks-strip-btn" id="ov-marks-manage">Manage</button>`;
+    $('#ov-marks-manage').onclick = () => {
+      openMarksBox(false);
+      $('#ov-timeline').scrollIntoView({ behavior: ctx.animate ? 'smooth' : 'auto', block: 'start' });
+    };
+  }
+
+  function drawMarksBox() {
+    const box = $('#tl-marks-box');
+    if (!box || box.hidden) return;
+    renderMarksManager(box, {
+      prefix: 'ov-mk',
+      stationId: PRIMARY,
+      stationLabel: live.primary()?.label || 'Diglis',
+      latest: live.latestOf(PRIMARY),
+      isDemo: live.status.mode === 'demo',
+      marksStore: marks,
+    });
   }
 
   function warningSentence() {
@@ -201,10 +255,23 @@ export function createOverview(ctx) {
       const sc = live.primary()?.scale;
       if (!main.raw.length) { chart.set({}); $('#tl-note').textContent = `No readings for ${label}.`; return; }
       const showBand = $('#tl-band').checked && !compare && sc?.low != null;
+      const allMarks = compare ? [] : marks.list(PRIMARY);
+      const showAll = $('#tl-marks-all').checked;
+      const { visible: visMarks, hidden: hidMarks } = partitionForChart(allMarks, main.raw.map(p => p[1]), { showAll });
+      const allWrap = $('#tl-marks-all-wrap');
+      if (allWrap) {
+        allWrap.hidden = compare || (!hidMarks.length && !(showAll && allMarks.length));
+        $('#tl-marks-all-label').textContent = hidMarks.length ? `Show all marks on chart (${hidMarks.length} off-scale)` : 'Show all marks on chart';
+      }
+      const thresholds = [
+        ...(!compare && sc?.highestRecent?.value && main.raw.some(p => p[1] > sc.high * 0.8) ? [{ value: sc.highestRecent.value, label: 'Highest recent', color: ctx.T.alert, dashed: true }] : []),
+        ...toThresholds(visMarks, ctx.T),
+      ];
       chart.set(timeSeriesOption({
         series, metric, T: ctx.T, animate: ctx.animate,
         bands: showBand ? [{ from: sc.low, to: sc.high, label: 'EA typical range', color: ctx.T.accentSoft }] : [],
-        thresholds: !compare && sc?.highestRecent?.value && main.raw.some(p => p[1] > sc.high * 0.8) ? [{ value: sc.highestRecent.value, label: 'Highest recent', color: ctx.T.alert, dashed: true }] : [],
+        thresholds,
+        fitThresholds: visMarks.length > 0,
         annotations: $('#tl-notes').checked && !compare ? notable(main.raw) : [],
         span: to - from,
       }));
@@ -253,5 +320,6 @@ export function createOverview(ctx) {
     render() { drawHero(); drawKPIs(); drawStations(); drawTimeline(); },
     onState(s, prev) { if (s.range !== prev.range || s.from !== prev.from || s.to !== prev.to) { ctx.syncRangeButtons(); drawTimeline(); } },
     onData() { drawHero(); drawKPIs(); drawStations(); drawTimeline(); },
+    onMarks(sid) { if (!sid || sid === PRIMARY) { drawHero(); drawTimeline(); } },
   };
 }

@@ -127,7 +127,7 @@ const step = async (name, fn) => {
   try { await fn(); results.push(`  ✓ ${name}`); } catch (e) { results.push(`  ✗ ${name}\n    ${e.message.split('\n').slice(0, 12).join('\n    ')}`); process.exitCode = 1; }
 };
 
-const browser = await chromium.launch();
+const browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {});
 try {
   /* ---------- Desktop, live (mocked) ---------- */
   const { page, errors, requested } = await open(browser);
@@ -504,6 +504,101 @@ try {
     assert.match(dl.suggestedFilename(), /^DEMO-feb2020-diglis-/);
   });
   await demoOff.context.close();
+
+  /* ---------- Personal watermarks (browser-local, cross-view, accessible) ---------- */
+  const mk = await open(browser);
+  await waitLive(mk.page);
+  await step('personal marks: add on Overview (including Use current & off-scale), stay private in URL, persist on reload, and pass axe in dark & light', async () => {
+    assert.ok(await mk.page.isHidden('#ov-marks-strip'), 'strip hidden when no marks saved');
+    await mk.page.click('#tl-marks-toggle');
+    await mk.page.waitForSelector('#tl-marks-box .marks-form');
+    // One-tap "Use current" fills the live Diglis height.
+    await mk.page.click('#tl-marks-box [data-use-current]');
+    await mk.page.fill('#ov-mk-lbl', 'Towpath steps');
+    await mk.page.click('#tl-marks-box button[type="submit"]');
+    await mk.page.waitForSelector('#ov-marks-strip:not([hidden])');
+    assert.match(await mk.page.textContent('#ov-marks-strip'), /browser only · not official/);
+    assert.match(await mk.page.textContent('#ov-marks-strip'), /Towpath steps/);
+    assert.match(await mk.page.textContent('#ov-marks-strip'), /At mark/);
+
+    // Add a distant high-water mark: should be hidden from the quiet-day y-axis until toggled on.
+    await mk.page.fill('#ov-mk-lbl', 'Flood wall');
+    await mk.page.fill('#ov-mk-val', '4.20');
+    await mk.page.click('#tl-marks-box button[type="submit"]');
+    await mk.page.waitForSelector('#tl-marks-all-wrap:not([hidden])');
+    assert.match(await mk.page.textContent('#tl-marks-all-label'), /1 off-scale/);
+    await mk.page.click('#tl-marks-all');
+    assert.equal(await mk.page.textContent('#tl-marks-all-label'), 'Show all marks on chart');
+
+    // Privacy: personal marks never enter the URL.
+    assert.ok(!mk.page.url().includes('Towpath') && !mk.page.url().includes('Flood'), 'marks stay out of URL');
+
+    // Axe accessibility check with strip visible & manager open in dark, then light theme.
+    await mk.page.waitForFunction(() => !document.querySelector('.toast'), null, { timeout: 6000 }).catch(() => {});
+    assert.deepEqual(await axeViolations(mk.page), [], 'dark theme axe with personal marks');
+    await mk.page.click('#theme');
+    await mk.page.waitForTimeout(300);
+    await mk.page.waitForFunction(() => !document.querySelector('.toast'), null, { timeout: 6000 }).catch(() => {});
+    assert.deepEqual(await axeViolations(mk.page), [], 'light theme axe with personal marks');
+
+    // Persist across a full page reload.
+    await mk.page.reload();
+    await waitLive(mk.page);
+    await mk.page.waitForSelector('#ov-marks-strip:not([hidden])');
+    assert.match(await mk.page.textContent('#ov-marks-strip'), /Towpath steps/);
+    assert.match(await mk.page.textContent('#ov-marks-strip'), /Flood wall/);
+  });
+
+  await step('personal marks: work per-station on Map, Analysis, Explore, History and during Feb 2020 demo replay', async () => {
+    // Map: Bewdley mark is isolated from Diglis.
+    await mk.page.click('.primary-nav [data-nav="map"]');
+    await mk.page.waitForFunction(() => document.querySelectorAll('.gauge-marker').length === 7, null, { timeout: 15000 });
+    await mk.page.click('#map-list button[data-id="2001"]');
+    await mk.page.waitForSelector('#map-panel-marks');
+    await mk.page.click('#map-panel-marks > summary');
+    await mk.page.fill('#map-mk-lbl', 'Bewdley quay');
+    await mk.page.fill('#map-mk-val', '2.50');
+    await mk.page.click('#map-marks-box button[type="submit"]');
+    assert.match(await mk.page.textContent('#map-marks-box'), /Bewdley quay/);
+    assert.doesNotMatch(await mk.page.textContent('#map-marks-box'), /Flood wall/);
+
+    // Analysis: Diglis marks appear in gauge legend, reference table, and simulator.
+    await mk.page.click('.primary-nav [data-nav="analysis"]');
+    await mk.page.selectOption('#an-gauge-station', '2085');
+    assert.match(await mk.page.textContent('#an-gauge'), /Your mark: Flood wall 4\.20 m/);
+    assert.match(await mk.page.textContent('#an-ref'), /Your personal marks \(browser only · not official\)/);
+    assert.match(await mk.page.textContent('#an-ref'), /Flood wall/);
+    await mk.page.click('#an-sim > summary');
+    await mk.page.selectOption('#sim-station', '2085');
+    assert.match(await mk.page.textContent('#sim-out'), /Your mark · Flood wall/);
+
+    // Explore: off-scale toggle appears in single-station stage view.
+    await mk.page.click('.primary-nav [data-nav="explore"]');
+    await mk.page.waitForSelector('#ex-marks-all-wrap:not([hidden])');
+    assert.match(await mk.page.textContent('#ex-marks-all-label'), /off-scale/);
+
+    // History: archived exceedance days are shown for Diglis marks.
+    await mk.page.click('.primary-nav [data-nav="history"]');
+    await mk.page.waitForSelector('#hi-marks:not([hidden])');
+    assert.match(await mk.page.textContent('#hi-marks'), /Your mark · Flood wall \(4\.20 m\)/);
+    assert.match(await mk.page.textContent('#hi-marks'), /\d+ days?/);
+
+    // Demo replay: personal marks still appear (showing 4.98 m is 0.78 m above 4.20 m),
+    // and "Use current" is withheld so a replayed flood height is never saved as live.
+    await mk.page.goto(ORIGIN + '/?demo=feb2020');
+    await mk.page.waitForFunction(() => window.__wr?.live.status.mode === 'demo', null, { timeout: 30000 });
+    await mk.page.waitForSelector('#ov-marks-strip:not([hidden])');
+    assert.match(await mk.page.textContent('#ov-marks-strip'), /0\.78 m above/);
+    await mk.page.click('#tl-marks-toggle');
+    assert.equal(await mk.page.locator('#tl-marks-box [data-use-current]').count(), 0);
+
+    // Removing all Diglis marks hides the Overview strip cleanly.
+    await mk.page.click('#tl-marks-box .mark-del >> nth=0');
+    await mk.page.click('#tl-marks-box .mark-del >> nth=0');
+    assert.ok(await mk.page.isHidden('#ov-marks-strip'), 'strip hides once all marks are removed');
+    assert.deepEqual(mk.errors, []);
+  });
+  await mk.context.close();
 
   /* ---------- Mobile: no horizontal scrolling on any view ---------- */
   const mob = await open(browser, { device: 'iPhone 13' });

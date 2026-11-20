@@ -71,6 +71,8 @@
     </div>
   </div>
 
+  <div class="marks-strip" id="ov-marks-strip" hidden role="region" aria-label="Your personal marks for Diglis"></div>
+
   <div class="kpis" id="ov-kpis" aria-label="Key indicators for Diglis"></div>
 
   <div class="more-detail">
@@ -99,7 +101,10 @@
       <label class="switch"><input type="checkbox" id="tl-band" checked><span>Typical range band</span></label>
       <label class="switch"><input type="checkbox" id="tl-notes" checked><span>Auto annotations</span></label>
       <label class="switch"><input type="checkbox" id="tl-upstream"><span>Compare with Bewdley (upstream)</span></label>
+      <label class="switch" id="tl-marks-all-wrap" hidden><input type="checkbox" id="tl-marks-all"><span id="tl-marks-all-label">Show all marks on chart</span></label>
+      <button type="button" class="btn btn-ghost btn-small marks-toggle" id="tl-marks-toggle" aria-expanded="false" aria-controls="tl-marks-box">My marks</button>
     </div>
+    <div class="marks-box" id="tl-marks-box" hidden></div>
     <div class="chart chart-lg" id="tl-chart" role="img" aria-label="River level timeline"></div>
     <div class="panel-foot">
       <p class="note" id="tl-note"></p>
@@ -200,6 +205,10 @@
         <label class="select"><span class="sr-only">Station</span><select id="an-gauge-station"></select></label></div>
       <div id="an-gauge" class="gauge-wrap"></div>
       <table class="ref-table" id="an-ref"></table>
+      <details class="marks-details" id="an-marks-details">
+        <summary>Manage my marks for this gauge</summary>
+        <div id="an-marks-box"></div>
+      </details>
     </section>
     <section class="panel" aria-labelledby="an-range-title">
       <div class="panel-head"><div><span class="kicker">03</span><h2 id="an-range-title">Where each gauge sits in its typical range</h2><p class="sub">Latest reading as % of the EA typical range. Click a bar to focus that station.</p></div></div>
@@ -269,6 +278,7 @@
       <fieldset><legend>Measure</legend><div class="seg seg-col" role="group" aria-label="Measure" id="ex-metric"></div></fieldset>
       <fieldset><legend>Annotations</legend>
         <label class="switch"><input type="checkbox" id="ex-auto" checked><span>Show automatic annotations</span></label>
+        <label class="switch" id="ex-marks-all-wrap" hidden><input type="checkbox" id="ex-marks-all"><span id="ex-marks-all-label">Show all my marks on chart</span></label>
         <p class="hint">Click (or tap) the chart to pin a note at that time. Notes are saved in the share link.</p>
         <button type="button" class="btn btn-small btn-ghost" id="ex-clear-notes">Clear my notes</button>
       </fieldset>
@@ -311,6 +321,7 @@
     <p class="note" id="hi-source"></p>
   </div>
   <div class="hist-context" id="hi-context"></div>
+  <div class="marks-history" id="hi-marks" hidden role="region" aria-label="Your personal marks in historical context"></div>
   <section class="panel" id="hi-long">
     <div class="panel-head"><div><h2>Every day since 2000</h2><p class="sub">Daily maximum stage. Numbered dots are the largest independent events (at least 14 days apart). Drag the handles or brush to zoom.</p></div>
       <div class="tools"><button type="button" class="btn btn-small btn-ghost" id="hi-csv">Download CSV</button><button type="button" class="icon-btn" data-full="#hi-long" aria-label="Full-screen chart"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button></div></div>

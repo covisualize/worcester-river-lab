@@ -5,9 +5,10 @@ import { timeSeriesOption } from '../charts.js';
 import { METRICS, breakGaps, notable, fmt, toCSV, stats, rangePosition, nearest, indexAtOrBefore, ukDateInput, time } from '../data.js';
 import { STATIONS, HOME } from '../config.js';
 import { basemap, gaugeIcon } from './map.js';
+import { partitionForChart, toThresholds } from '../marks.js';
 
 export function createExplore(ctx) {
-  const { store, live } = ctx;
+  const { store, live, marks } = ctx;
   let chart, map, base, markers = {}, current = null, reqId = 0, autoNotes = true, playing = null, playFrac = 1;
 
   function mount() {
@@ -33,6 +34,7 @@ export function createExplore(ctx) {
     $$('#ex-metric button').forEach(b => (b.onclick = () => store.set({ metric: b.dataset.metric })));
     // Annotations
     $('#ex-auto').onchange = e => { autoNotes = e.target.checked; draw(false); };
+    $('#ex-marks-all').onchange = () => draw(false);
     $('#ex-clear-notes').onclick = () => store.set({ notes: [] });
     chart.chart?.getZr().on('click', e => {
       if (!current || !chart.chart.containPixel('grid', [e.offsetX, e.offsetY])) return;
@@ -111,10 +113,23 @@ export function createExplore(ctx) {
     const metric = current.metric;
     const notes = autoNotes && focus && metric === 'stage' ? notable(focus.raw) : [];
     const sc = live.station(focusId())?.scale;
+    const singleStage = metric === 'stage' && current.series.length === 1;
+    const stMarks = singleStage ? marks.list(current.series[0].id) : [];
+    const showAll = $('#ex-marks-all').checked;
+    const { visible: visMarks, hidden: hidMarks } = singleStage
+      ? partitionForChart(stMarks, current.series[0].raw.map(p => p[1]), { showAll })
+      : { visible: [], hidden: [] };
+    const allWrap = $('#ex-marks-all-wrap');
+    if (allWrap) {
+      allWrap.hidden = !singleStage || (!hidMarks.length && !(showAll && stMarks.length));
+      $('#ex-marks-all-label').textContent = hidMarks.length ? `Show all my marks on chart (${hidMarks.length} off-scale)` : 'Show all my marks on chart';
+    }
     chart.set(timeSeriesOption({
       series: current.series.map(x => ({ id: x.id, name: x.name, color: x.color, raw: x.raw, data: breakGaps(x.metricData), highlight: x.id === focus?.id })),
       metric, T: ctx.T, animate: animate && ctx.animate, annotations: notes, userNotes: s.notes.filter(t => t >= current.from && t <= current.to),
-      bands: metric === 'range' ? [{ from: 0, to: 100, label: 'Typical range', color: ctx.T.accentSoft }] : metric === 'stage' && current.series.length === 1 && sc?.low != null ? [{ from: sc.low, to: sc.high, label: 'EA typical range', color: ctx.T.accentSoft }] : [],
+      bands: metric === 'range' ? [{ from: 0, to: 100, label: 'Typical range', color: ctx.T.accentSoft }] : singleStage && sc?.low != null ? [{ from: sc.low, to: sc.high, label: 'EA typical range', color: ctx.T.accentSoft }] : [],
+      thresholds: singleStage ? toThresholds(visMarks, ctx.T) : [],
+      fitThresholds: singleStage && visMarks.length > 0,
       span: current.to - current.from,
     }));
     const empty = current.series.filter(x => !x.raw.length).map(x => x.name);
@@ -232,6 +247,22 @@ export function createExplore(ctx) {
       const p = nearest(f.raw, n, time.HOUR);
       items.push({ ico: '📌', title: `Your note · ${fmt.dateTime(n)}`, sub: p ? `${f.name} ${p[1].toFixed(3)} m` : 'No reading near this time', t: n });
     }
+    if (current.series.length === 1 && current.metric === 'stage') {
+      const only = current.series[0];
+      const st = stats(only.raw);
+      if (st) {
+        for (const m of marks.list(only.id)) {
+          if (st.max[1] >= m.value) {
+            items.push({
+              ico: '◆', color: ctx.T.mark || ctx.T.sim,
+              title: `Your mark · ${m.label} (${m.value.toFixed(2)} m) reached`,
+              sub: `Peak ${st.max[1].toFixed(2)} m (${fmt.signed((st.max[1] - m.value) * 100, 0, ' cm')}) on ${fmt.dateTime(st.max[0])} · browser-only note`,
+              t: st.max[0],
+            });
+          }
+        }
+      }
+    }
     $('#ex-insights').innerHTML = items.map((it, i) => `<button type="button" class="insight" data-i="${i}" ${it.t ? '' : 'disabled'}><span class="ico" style="color:${it.color || 'inherit'}">${it.ico}</span><span><b>${esc(it.title)}</b><small>${esc(it.sub)}</small></span><span class="when">${it.t ? 'Zoom →' : ''}</span></button>`).join('') || '<p class="empty">Nothing to summarise yet.</p>';
     $$('#ex-insights .insight').forEach(b => (b.onclick = () => {
       const it = items[Number(b.dataset.i)];
@@ -253,6 +284,7 @@ export function createExplore(ctx) {
       else if (s.station !== prev.station) { draw(false); drawMap(); }
     },
     onData() { if (!playing) load(); },
+    onMarks() { if (current && !playing) { draw(false); drawInsights(); } },
     onTheme() { map.removeLayer(base); base = basemap(ctx.theme()).addTo(map); draw(false); drawMap(); },
   };
 }
