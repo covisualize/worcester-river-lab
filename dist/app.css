@@ -99,7 +99,8 @@ h1.eyebrow { font-family: var(--sans); font-size: 11px; letter-spacing: .14em; m
   appearance: none; background: var(--surface2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238ea39f' stroke-width='1.6' fill='none'/%3E%3C/svg%3E") no-repeat right 10px center / 10px;
   border: 1px solid var(--line); border-radius: 10px; padding: 7px 30px 7px 11px; font-size: 13px; cursor: pointer; max-width: 100%;
 }
-.select { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.select { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); max-width: 100%; }
+.select select { min-width: 0; max-width: 100%; }
 input[type="date"] { background: var(--surface2); border: 1px solid var(--line); border-radius: 10px; padding: 6px 9px; font-size: 13px; }
 input[type="range"] { accent-color: var(--accent); }
 
@@ -377,6 +378,13 @@ main { max-width: 1320px; margin: 0 auto; padding: 22px 20px 40px; outline: none
 .data-table tr[aria-selected="true"] { background: var(--accent-soft); }
 .data-table button.link { background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; color: var(--text); }
 .table-wrap { max-height: 360px; overflow: auto; }
+/* The Overview timeline's readings as a table (a collapsed section under the chart). */
+.chart-table { margin-top: 10px; }
+.chart-table summary { cursor: pointer; font-size: 13px; font-weight: 600; padding: 8px 0; min-height: 24px; }
+.chart-table .table-wrap { margin-top: 8px; border: 1px solid var(--line); border-radius: 10px; }
+.chart-table .data-table thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
+.chart-table .data-table th[scope="row"] { color: var(--text); font-weight: 500; white-space: nowrap; font-size: 13px; }
+.chart-table .data-table th.n { text-align: right; }
 .rate-summary, .rain-summary, .sim-out { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
 .stat { background: var(--surface2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; min-width: 140px; flex: 1; }
 .stat span { display: block; font-size: 11.5px; color: var(--muted); }
@@ -503,9 +511,12 @@ main { max-width: 1320px; margin: 0 auto; padding: 22px 20px 40px; outline: none
   .bottom-nav [aria-current="page"] { color: var(--accent); }
   body { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
   .toasts { bottom: 86px; }
-  .explore { grid-template-columns: 1fr; }
+  .explore { grid-template-columns: minmax(0, 1fr); } /* not 1fr: that cannot shrink below the widest label, and a 320 px phone then scrolls sideways */
   .explore-side { position: static; max-height: none; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
-  .grid-2, .grid-hist { grid-template-columns: 1fr; }
+  .grid-2, .grid-hist { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 340px) {
+  .brand span { display: none; } /* just the logo: the link's accessible name is still "Worcester River home" */
 }
 @media (max-width: 640px) {
   :root { --topbar: 56px; }
@@ -515,9 +526,13 @@ main { max-width: 1320px; margin: 0 auto; padding: 22px 20px 40px; outline: none
   .status-pill { padding: 0; width: 36px; height: 36px; justify-content: center; border-radius: 10px; }
   .status-pill span { display: none; }
   .topbar-tools { gap: 6px; }
-  .brand { min-width: 0; }
+  /* The brand must be allowed to shrink (the base rule says flex: none), or the title's ellipsis never applies and on a 360 px phone the
+     header is wider than the screen and the page scrolls sideways. The logo mark keeps its size. */
+  .brand { min-width: 0; flex: 0 1 auto; }
+  .brand svg { flex: none; }
   .brand span { min-width: 0; }
-  .brand b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* The name wraps onto two lines ("Worcester / River") when one line does not fit, rather than being cut off with an ellipsis. */
+  .brand b { font-size: 14px; line-height: 1.15; overflow: hidden; overflow-wrap: normal; }
   .icon-btn, .intel-btn { width: 36px; height: 36px; padding: 0; justify-content: center; }
   main { padding: 14px 12px 30px; }
   .hero { grid-template-columns: 1fr; gap: 12px; }
@@ -565,10 +580,92 @@ main { max-width: 1320px; margin: 0 auto; padding: 22px 20px 40px; outline: none
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
 }
+/* ---------- No jump when the first data arrives ----------
+   Until the first reading history lands, the status pill is in "loading". The hero text, the gauge and the KPI row are
+   still empty or short then, and all fill in at once, pushing everything below them down (layout shift: 0.18 on a phone,
+   0.6 under Lighthouse's throttling). While loading, hold roughly the space they will fill. The heights are settled sizes
+   measured at each breakpoint (KPI rows 403 / 282 / 135 px; hero 554 px at 360 wide, 354 px at 640), taken slightly low so no
+   screen ends up with a gap. The hold ends as soon as the status leaves "loading", and with it any leftover space. */
+body:has(#live-status[data-mode="loading"]) .kpis { min-height: 133px; }
+body:has(#live-status[data-mode="loading"]) .hero-main { min-height: 410px; }
+@media (max-width: 1180px) {
+  body:has(#live-status[data-mode="loading"]) .kpis { min-height: 280px; }
+  body:has(#live-status[data-mode="loading"]) .hero-main { min-height: 335px; }
+}
+@media (max-width: 640px) {
+  body:has(#live-status[data-mode="loading"]) .kpis { min-height: 400px; }
+  body:has(#live-status[data-mode="loading"]) .hero-main { min-height: max(346px, calc(546px - (100vw - 360px) * 1.17)); }
+  body:has(#live-status[data-mode="loading"]) .hero-gauge { min-height: min(230px, calc(100vw * .5)); }
+}
+/* Inside the hero card the text lines also grow one after another on a phone (warning line, level chips, summary, meta row),
+   so hold those too. Settled heights by width: summary 116/93/70 px, meta 157/137/116/80 px, chips 79 px, warning line 50 px. */
+@media (max-width: 560px) {
+  body:has(#live-status[data-mode="loading"]) .hero-summary { min-height: 68px; }
+  body:has(#live-status[data-mode="loading"]) .hero-meta { min-height: 114px; }
+}
+@media (max-width: 430px) {
+  body:has(#live-status[data-mode="loading"]) .hero-level { min-height: 77px; }
+  body:has(#live-status[data-mode="loading"]) .hero-summary { min-height: 91px; }
+  body:has(#live-status[data-mode="loading"]) .hero-meta { min-height: 135px; }
+}
+@media (max-width: 400px) {
+  body:has(#live-status[data-mode="loading"]) .hero-warnline { min-height: 48px; }
+}
+/* The level number and the two chips are "—" until the data arrives, so the row is one line of narrow items and then
+   wraps into two. Give them their usual widths (measured: number 2.03 em, band chip 9.75 em, trend chip 12.25 em) so it wraps
+   the same way from the start, and keep the warning line's first line where it is as a second line appears under it. */
+body:has(#live-status[data-mode="loading"]) #ov-level { min-width: 2.03em; text-align: right; }
+body:has(#live-status[data-mode="loading"]) #ov-band { min-width: 9.75em; }
+body:has(#live-status[data-mode="loading"]) #ov-trend { min-width: 12.25em; }
+body:has(#live-status[data-mode="loading"]) .hero-warnline { align-items: flex-start; }
+body:has(#live-status[data-mode="loading"]) .hero-warnline i { margin-top: .5em; }
+
+/* The river at a glance (js/river-strip.js). Two drawings: left-to-right for wide screens, top-to-bottom for narrow ones. */
+.river-strip { margin: 4px 0 18px; padding: 14px 16px 12px; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(180deg, color-mix(in srgb, var(--water) 6%, var(--surface)), var(--surface)); }
+.river-strip figcaption { margin-top: 8px; max-width: 860px; }
+#st-river { aspect-ratio: 1040 / 290; }
+.rs { display: block; width: 100%; height: auto; overflow: visible; }
+.rs-tall { display: none; }
+.rs text { font-family: inherit; fill: var(--text); }
+.rs-river { fill: none; stroke: color-mix(in srgb, var(--water) 55%, var(--surface)); stroke-width: 12; stroke-linecap: round; stroke-linejoin: round; }
+.rs-teme { stroke-width: 8; }
+.rs-arrow { fill: color-mix(in srgb, var(--water) 55%, var(--surface)); }
+.rs-label { font-size: 10.5px; font-weight: 600; letter-spacing: .12em; fill: var(--muted) !important; }
+.rs-stem { stroke: var(--muted); stroke-width: 1.5; fill: none; opacity: .6; }
+.rs-meter { fill: var(--surface2); stroke: var(--muted); stroke-width: 1; }
+.rs-fill { fill: var(--water); }
+.rs-node[data-k="low"] .rs-fill { fill: var(--fall); }
+.rs-node[data-k="high"] .rs-fill { fill: var(--rise); }
+.rs-over { stroke: var(--rise); stroke-width: 3; stroke-linecap: round; }
+.rs-dot { fill: var(--surface); stroke: var(--water); stroke-width: 3; }
+.rs-node.is-primary .rs-dot { fill: var(--water); stroke: var(--surface); }
+.rs-name { font-size: 13.5px; font-weight: 600; }
+.rs-node.is-primary .rs-name { font-weight: 800; }
+.rs-val { font-size: 13px; fill: var(--muted) !important; }
+.rs-num { font-weight: 700; fill: var(--text); font-variant-numeric: tabular-nums; }
+.rs-words { font-size: 12px; fill: var(--muted) !important; }
+/* A delayed reading: the graphics fade, the words do not (the word "delayed" is the point, and faded text fails contrast). */
+.rs-node.is-delayed :is(.rs-meter, .rs-fill, .rs-dot, .rs-stem) { opacity: .5; }
+.rs-node.is-delayed .rs-words { font-style: italic; fill: var(--text) !important; }
+@media (max-width: 900px) {
+  #st-river { aspect-ratio: 360 / 640; max-width: 420px; }
+  .rs-wide { display: none; }
+  .rs-tall { display: block; }
+}
+
 @media print {
   .topbar, .bottom-nav, .drawer, .scrim, .tools, .map-shell { display: none !important; }
   body { background: #fff; color: #000; }
+  /* A printout is read later and cannot be clicked: no controls, and the stamp says when it was made. */
+  .btn, .icon-btn, .seg, .toggle-row, .custom-range, .explain, .demo-link, .foot-actions, .more-detail, .chart-table { display: none !important; }
+  .print-stamp { display: block !important; font-size: 12px; line-height: 1.45; border: 1px solid #000; padding: 6px 10px; margin: 0 0 12px; }
+  .hero, .kpis, .kpi, .station, .chart { break-inside: avoid; }
+  .panel-head, .more-detail { break-after: avoid; }
+  .stations { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+/* Set while printing (see beforeprint in main.js) so the charts are drawn at the page's width and not clipped. */
+.print-stamp { display: none; }
+html.is-printing .chart { width: 17.5cm; max-width: 100%; }
 
 /* Demo replay: impossible to mistake for live conditions. */
 .demo-banner { position: sticky; top: 0; z-index: 40; margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; border: 2px solid var(--sim); background: color-mix(in srgb, var(--sim) 14%, var(--surface)); color: var(--text); font-size: 14px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }

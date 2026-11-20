@@ -83,13 +83,15 @@ function eaResponse(url, { withAlert, scenario }) {
   return null;
 }
 
-async function open(browser, { path = '/', viewport, device, offline = false, withAlert = true, scenario = null } = {}) {
+async function open(browser, { path = '/', viewport, device, offline = false, withAlert = true, scenario = null, watchShifts = false } = {}) {
   const context = await browser.newContext(device ? { ...devices[device] } : { viewport: viewport || { width: 1400, height: 950 } });
   const page = await context.newPage();
+  // Sum of the page's layout shifts (CLS) since it started loading, in window.__shift.
+  if (watchShifts) await page.addInitScript(() => { window.__shift = 0; new PerformanceObserver(l => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__shift += e.value; }).observe({ type: 'layout-shift', buffered: true }); });
   await page.clock.setFixedTime(NOW);
   const errors = [];
   const requested = [];
-  let leafletHits = 0, leafletCssHits = 0;
+  let leafletHits = 0, leafletCssHits = 0, echartsHits = 0;
   page.on('request', r => requested.push(new URL(r.url()).pathname));
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', msg => { if (msg.type() === 'error' && !/Failed to load resource/.test(msg.text())) errors.push(msg.text()); });
@@ -100,15 +102,29 @@ async function open(browser, { path = '/', viewport, device, offline = false, wi
       if (p.endsWith('/')) p += 'index.html';
       // 'noleaflet': the map library fails on its first two requests only, so "Try again" can succeed.
       if (scenario === 'noleaflet' && p.endsWith('/vendor/leaflet/leaflet.js') && leafletHits++ < 2) return route.abort('failed');
+      // 'noecharts': the charting library fails on its first two requests only (the early preload counts as one), so a retry can succeed.
+      if (scenario === 'noecharts' && p.endsWith('/vendor/echarts.slim.min.js') && echartsHits++ < 2) return route.abort('failed');
+      // 'slowpicture': the code that makes "Save image" pictures takes 1.5 s to arrive, so the chart can change while it loads.
+      if (scenario === 'slowpicture' && p.endsWith('/js/chart-image.js')) await new Promise(r => setTimeout(r, 1500));
+      // 'nopicture': that code cannot be fetched at all (the connection dropped after the page loaded).
+      if (scenario === 'nopicture' && p.endsWith('/js/chart-image.js')) return route.abort('failed');
       // 'nocss': the script loads but the stylesheet fails once; a retry must fetch the stylesheet again.
       if (scenario === 'nocss' && p.endsWith('/vendor/leaflet/leaflet.css') && leafletCssHits++ < 1) return route.abort('failed');
       try { return route.fulfill({ body: await readFile(join(root, p)), contentType: types[extname(p)] || 'application/octet-stream' }); } catch { return route.fulfill({ status: 404 }); }
     }
     if (offline) return route.abort('internetdisconnected');
+    // 'late': every EA answer takes 1.5 s, so the page paints its placeholders first and the data arrives afterwards.
+    if (scenario === 'late') await new Promise(r => setTimeout(r, 1500));
+    // 'veryslow': every EA answer takes 9 s (the EA has done this), so for a while there is nothing at all to show.
+    if (scenario === 'veryslow') await new Promise(r => setTimeout(r, 9000));
     // EA reading history: 'slow' answers after 8 s, 'noreadings' fails fast. Gauge metadata and warnings are untouched.
     if (/\/readings$/.test(new URL(url).pathname)) {
       if (scenario === 'noreadings') return route.abort('failed');
+      // 'badgauge': only Bransford's history request fails; the other six answer normally.
+      if (scenario === 'badgauge' && /\/measures\/2086-/.test(url)) return route.abort('failed');
       if (scenario === 'slow' || scenario === 'slowstations' || scenario === 'remoteslow') await new Promise(r => setTimeout(r, 8000));
+      // 'primaryfirst': Diglis's history arrives at once, every other gauge's 6 s later.
+      if (scenario === 'primaryfirst' && !/\/measures\/2085-/.test(url)) await new Promise(r => setTimeout(r, 6000));
     }
     // 'slowstations': every gauge except Diglis (2085) answers its metadata 8 s late.
     if (scenario === 'slowstations' && /\/id\/stations\/\w+\.json$/.test(new URL(url).pathname) && !url.includes('/2085.json')) await new Promise(r => setTimeout(r, 8000));
@@ -122,6 +138,51 @@ async function open(browser, { path = '/', viewport, device, offline = false, wi
 }
 
 const waitLive = page => page.waitForFunction(() => window.__wr?.live.status.mode === 'live', null, { timeout: 20000 });
+
+// Click "Save image" on the Overview timeline and return what came out: the file name, every string drawn on a canvas while the
+// picture was made (the text cannot be read back out of a PNG), and a description of the PNG itself, decoded in the page.
+// `during`, if given, runs right after the click, while the picture is still being made.
+async function saveImage(page, { during, button = '#tl-png', canvas = '#tl-chart canvas', note = '#tl-note', noteRe = 'readings' } = {}) {
+  const where = { canvas, note, noteRe };
+  await page.waitForFunction(w => document.querySelector(w.canvas) && new RegExp(w.noteRe).test(document.querySelector(w.note).textContent), where, { timeout: 10000 }).catch(async e => {
+    const seen = await page.evaluate(w => ({ canvases: document.querySelectorAll(w.canvas).length, note: document.querySelector(w.note).textContent, mode: window.__wr?.live.status.mode, view: location.search }), where);
+    throw new Error(`the chart never showed itself and its readings: ${JSON.stringify(seen)}`);
+  });
+  await page.evaluate(() => {
+    window.__drawn = [];
+    window.__fillText = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function (t, ...a) { window.__drawn.push(String(t)); return window.__fillText.call(this, t, ...a); };
+  });
+  try {
+    const downloading = page.waitForEvent('download', { timeout: 10000 });
+    downloading.catch(() => {}); // if `during` fails first, this must not become an unhandled rejection; the await below still reports it
+    await page.click(button);
+    await during?.();
+    const download = await downloading;
+    const bytes = await readFile(await download.path());
+    const drawn = await page.evaluate(() => window.__drawn.join(' '));
+    // How many different colours there are in a strip: text on a plain background has many (anti-aliasing), an empty strip has one.
+    const picture = await page.evaluate(async b64 => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${b64}`;
+      await img.decode();
+      const c = Object.assign(document.createElement('canvas'), { width: img.width, height: img.height }), x = c.getContext('2d');
+      x.drawImage(img, 0, 0);
+      const colours = (y, h) => { const d = x.getImageData(0, y, img.width, h).data, s = new Set(); for (let i = 0; i < d.length; i += 4) s.add((d[i] << 16) | (d[i + 1] << 8) | d[i + 2]); return s.size; };
+      return { width: img.width, height: img.height, header: colours(0, 70), middle: colours(Math.round(img.height / 2) - 20, 40), footer: colours(img.height - 90, 90) };
+    }, bytes.toString('base64'));
+    return { name: download.suggestedFilename(), bytes, drawn, picture };
+  } finally {
+    await page.evaluate(() => { CanvasRenderingContext2D.prototype.fillText = window.__fillText; });
+  }
+}
+// The UK date and time as in the picture's file name, worked out here independently of the site's own code.
+const ukStamp = ms => {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(ms).map(x => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}-${p.hour}${p.minute}`;
+};
+const PNG_SIGNATURE = '89504e470d0a1a0a';
+
 const results = [];
 const step = async (name, fn) => {
   try { await fn(); results.push(`  ✓ ${name}`); } catch (e) { results.push(`  ✗ ${name}\n    ${e.message.split('\n').slice(0, 12).join('\n    ')}`); process.exitCode = 1; }
@@ -146,6 +207,117 @@ try {
     assert.equal(await page.locator('.kpi').count(), 6);
     assert.equal(await page.locator('#st-grid .station').count(), 7);
     assert.ok(!(await page.textContent('main')).includes('NaN'));
+  });
+
+  await step('river diagram: all 7 gauges in river order with the same readings as the cards, and a text alternative', async () => {
+    assert.ok(await page.isVisible('#st-river .rs-wide') && await page.isHidden('#st-river .rs-tall'), 'the left-to-right drawing on a wide screen');
+    assert.equal(await page.locator('#st-river .rs-wide .rs-node').count(), 7);
+    const shown = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#st-river .rs-wide .rs-node')].map(n => [n.dataset.id, n.querySelector('.rs-num')?.textContent])));
+    const cards = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#st-grid .station')].map(c => [c.dataset.id, c.querySelector('.station-val').firstChild.textContent.trim() + ' m'])));
+    assert.deepEqual(shown, cards, 'the diagram and the cards state the same levels');
+    assert.equal(shown['2085'], `${latest.value.toFixed(2)} m`);
+    assert.match(await page.getAttribute('#st-river .rs-wide', 'aria-label'), /River Severn, upstream to downstream: Bewdley .* River Teme, which joins the Severn below Diglis: Knightsford Bridge /);
+    assert.match(await page.textContent('.river-strip figcaption'), /A diagram, not a map: nothing is to scale/);
+    await page.click('#st-sort [data-sort="rate"]');
+    assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('#st-river .rs-wide .rs-node')].map(n => n.dataset.id)), ['2001', '2642', '2085', '2616', '2032', '2029', '2086'], 'sorting the cards does not reorder the river');
+    await page.click('#st-sort [data-sort="river"]');
+  });
+
+  await step('printing: a dated stamp, no dead buttons, and the chart drawn at the page width', async () => {
+    await page.waitForSelector('#tl-chart canvas');
+    const wide = await page.evaluate(() => document.querySelector('#tl-chart').getBoundingClientRect().width);
+    assert.ok(wide > 700, 'the chart is wide on screen');
+    try {
+      await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+      await page.emulateMedia({ media: 'print' });
+      const stamp = await page.textContent('#print-stamp');
+      assert.match(stamp, /unofficial summary of Environment Agency data\) · printed \w{3}, \d+ \w{3} \d{4}, \d\d:\d\d (GMT|BST)\. Latest Diglis reading: \w{3}, \d+ \w{3} \d{4}, \d\d:\d\d (GMT|BST)\./);
+      assert.match(stamp, /official flood warnings use GOV\.UK Check for flooding or call Floodline 0345 988 1188/);
+      assert.ok(await page.isVisible('#print-stamp'));
+      for (const hidden of ['#ov-warn-open', '#tl-csv', '#tl-png', '#tl-table-wrap', '#tl-explore', '#tl-range', '.toggle-row', '.explain', '#st-grid .station .btn']) {
+        assert.ok(await page.locator(hidden).first().isHidden(), `${hidden} is not printed`);
+      }
+      assert.equal(await page.locator('.kpi:visible').count(), 6, 'the figures are printed');
+      assert.equal(await page.locator('#st-grid .station:visible').count(), 7);
+      // 17.5 cm is 661 px: the canvas is redrawn to that, not left at its screen width and cut off by the page.
+      const fit = await page.evaluate(() => { const c = document.querySelector('#tl-chart canvas').getBoundingClientRect(), box = document.querySelector('#tl-chart').getBoundingClientRect(); return { box: Math.round(box.width), canvasRight: Math.round(c.right), boxRight: Math.round(box.right) }; });
+      assert.ok(fit.box <= 662 && fit.canvasRight <= fit.boxRight + 1, `chart fits the page (${JSON.stringify(fit)})`);
+    } finally {
+      // Whatever happened above, leave the page as a screen again so the later steps are not affected.
+      await page.emulateMedia({ media: null });
+      await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+    }
+    await page.waitForFunction(w => document.querySelector('#tl-chart').getBoundingClientRect().width > w, 700, { timeout: 5000 });
+    assert.ok(await page.isHidden('#print-stamp'), 'the stamp is for paper only');
+    assert.ok(await page.isVisible('#tl-csv'), 'controls are back on screen');
+  });
+
+  await step('save image: a PNG of the chart with its title, period, source, save time and where the official warnings are', async () => {
+    assert.ok(!requested.some(p => p.endsWith('/js/chart-image.js')), 'the picture code is not part of the page start-up');
+    const shot = await saveImage(page);
+    assert.ok(requested.some(p => p.endsWith('/js/chart-image.js')), 'it is fetched when someone asks for a picture');
+    assert.equal(shot.name, `diglis-24h-chart-${ukStamp(NOW)}.png`);
+    assert.equal(shot.bytes.subarray(0, 8).toString('hex'), PNG_SIGNATURE, 'a real PNG');
+    const { width, height, header, middle, footer } = shot.picture;
+    assert.ok(width >= 1400 && height >= 700, `a picture you can share (${width} x ${height})`);
+    assert.ok(header > 3 && footer > 3, `text above and below the chart, not blank strips (colours: header ${header}, footer ${footer})`);
+    assert.ok(middle > 3, `the chart itself is in the middle (${middle} colours)`);
+    assert.match(shot.drawn, /River Severn at Diglis, Worcester/);
+    assert.match(shot.drawn, /Last 24 hours, .+ \((GMT|BST)\) · metres above station datum · UK time/);
+    assert.match(shot.drawn, new RegExp(`Latest Diglis reading: \\w{3}, \\d+ \\w{3} \\d{4}, \\d\\d:\\d\\d (GMT|BST)\\. Saved \\w{3}, \\d+ \\w{3} \\d{4}, \\d\\d:\\d\\d (GMT|BST)\\.`));
+    assert.match(shot.drawn, /unofficial summary of Environment Agency real-time data \(Open Government Licence v3\)/);
+    assert.match(shot.drawn, /official flood warnings use GOV\.UK Check for flooding or call Floodline 0345 988 1188/);
+    assert.doesNotMatch(shot.drawn, /DEMO|snapshot/i, 'live data is not labelled as either');
+    assert.match(await page.textContent('#toasts'), /Downloaded diglis-24h-chart-/);
+  });
+
+  await step('save image: the compare view says what it shows, and the picture follows the range', async () => {
+    await page.click('#tl-range [data-range="7d"]');
+    await page.check('#tl-upstream');
+    await page.waitForFunction(() => /Bewdley/.test(document.querySelector('#tl-sub').textContent) && /Last 7 days/.test(document.querySelector('#tl-note').textContent));
+    const shot = await saveImage(page);
+    assert.equal(shot.name, `diglis-7d-chart-${ukStamp(NOW)}.png`);
+    assert.match(shot.drawn, /River level change since the start of the period: Bewdley \(upstream\) and Diglis/);
+    assert.match(shot.drawn, /Last 7 days, .+ · change in cm · UK time/);
+    await page.uncheck('#tl-upstream');
+    await page.click('#tl-range [data-range="24h"]');
+    await page.waitForFunction(() => /Last 24 hours/.test(document.querySelector('#tl-note').textContent));
+  });
+
+  await step('readings table: the numbers behind the timeline, newest first, reachable by keyboard, nothing filled in', async () => {
+    assert.ok(await page.isHidden('#tl-table'), 'collapsed until asked for');
+    await page.focus('#tl-table-wrap summary');
+    await page.keyboard.press('Enter'); // a native <details> toggles from the keyboard
+    await page.waitForSelector('#tl-table tbody tr');
+    const rows = await page.$$eval('#tl-table tbody tr', trs => trs.map(tr => [...tr.cells].map(c => c.textContent.trim())));
+    const note = await page.textContent('#tl-table-note');
+    const total = Number(note.match(/(?:all|of) (\d+) readings/)[1]);
+    assert.equal(rows.length, Math.min(96, total), note);
+    assert.deepEqual(await page.$$eval('#tl-table thead th', ths => ths.map(t => t.textContent.trim())), ['Time', 'Diglis (m)']);
+    assert.match(rows[0][0], /^\d+ \w{3}, \d\d:\d\d (GMT|BST)$/);
+    assert.equal(rows[0][1], latest.value.toFixed(3), 'the first row is the latest reading');
+    assert.match(note, /in UK time\. Levels are metres above each gauge's own station datum\./);
+    assert.equal(await page.getAttribute('#tl-table-wrap .table-wrap', 'role'), 'region');
+    assert.equal(await page.getAttribute('#tl-table-wrap .table-wrap', 'tabindex'), '0', 'a scrollable region a keyboard can reach');
+    assert.equal(await page.locator('#tl-table caption').count(), 1);
+    assert.equal(await page.locator('#tl-table tbody th[scope="row"]').count(), rows.length, 'each row is named by its time');
+    await page.evaluate(() => Promise.all(document.getAnimations().filter(a => Number.isFinite(a.effect.getComputedTiming().endTime)).map(a => a.finished))); // a colour mid-transition is not what the audit should read (animations that repeat for ever, like the live dot's pulse, never finish: leave those)
+    assert.deepEqual(await axeViolations(page), [], 'with the table open');
+    // The comparison view: both gauges' real levels, and a note that they are not the cm change on the chart.
+    await page.click('#tl-range [data-range="7d"]');
+    await page.check('#tl-upstream');
+    await page.waitForFunction(() => /Bewdley \(m\)/.test(document.querySelector('#tl-table thead').textContent));
+    assert.deepEqual(await page.$$eval('#tl-table thead th', ths => ths.map(t => t.textContent.trim())), ['Time', 'Bewdley (m)', 'Diglis (m)']);
+    const wide = await page.textContent('#tl-table-note');
+    assert.match(wide, /not the change in cm that the chart shows/);
+    assert.match(wide, /the latest 96 of \d+ times with a reading \(Download CSV has all of them\)/);
+    assert.equal(await page.locator('#tl-table tbody tr').count(), 96);
+    await page.uncheck('#tl-upstream');
+    await page.click('#tl-range [data-range="24h"]');
+    await page.waitForFunction(() => /Last 24 hours/.test(document.querySelector('#tl-note').textContent) && !/Bewdley/.test(document.querySelector('#tl-table thead').textContent));
+    await page.focus('#tl-table-wrap summary');
+    await page.keyboard.press('Enter'); // and closes again
+    assert.ok(await page.isHidden('#tl-table'));
   });
 
   await step('range switch animates the timeline and updates the URL', async () => {
@@ -285,10 +457,26 @@ try {
     assert.notEqual(await slow.page.textContent('#ov-level'), '—', 'a level is shown before any history arrives');
     assert.match(await slow.page.textContent('#live-status'), /Loading readings/);
     assert.ok(await slow.page.evaluate(() => window.__wr.live.floods), 'warnings are shown');
+    // Past the point where a silent EA is called slow (6 s): this EA has answered, so the page must not claim otherwise.
+    await slow.page.waitForTimeout(6500);
+    assert.doesNotMatch(await slow.page.textContent('#ov-summary'), /taking longer than usual/);
+    assert.doesNotMatch(await slow.page.textContent('#live-status'), /slow to answer/);
     await slow.page.waitForFunction(() => window.__wr.live.status.mode === 'live' && Object.keys(window.__wr.live.series).length >= 5, null, { timeout: 30000 });
     assert.match(await slow.page.textContent('#ov-trend'), /Steady|Rising|Falling/, 'the trend arrives with the history');
   });
   await slow.context.close();
+  const vs = await open(browser, { scenario: 'veryslow' });
+  await step('a silent EA: after a few seconds the page says the wait is the EA\'s, and the notice goes when data arrives', async () => {
+    await vs.page.waitForFunction(() => /taking longer than usual/.test(document.querySelector('#ov-summary').textContent), null, { timeout: 8500 });
+    assert.match(await vs.page.textContent('#live-status'), /EA is slow to answer/);
+    assert.match(await vs.page.textContent('#ov-summary'), /nothing to show yet.*will fill in by itself.*Floodline 0345 988 1188/);
+    assert.equal(await vs.page.textContent('#ov-level'), '—', 'no number is made up while waiting');
+    await waitLive(vs.page);
+    assert.match(await vs.page.textContent('#ov-summary'), /^The Severn at Diglis is/);
+    assert.match(await vs.page.textContent('#live-status'), /^Live/);
+    assert.deepEqual(vs.errors, []);
+  });
+  await vs.context.close();
   const lazy = await open(browser);
   await step('hovering the Map link starts loading the map library before the click', async () => {
     await waitLive(lazy.page);
@@ -323,6 +511,123 @@ try {
     assert.deepEqual(nc.errors, []);
   });
   await nc.context.close();
+
+  /* ---------- The charting library is not run at startup ---------- */
+  const ph = await open(browser, { device: 'iPhone 13' });
+  await step('phone: ECharts is fetched early but not run at startup, and runs once when the timeline nears the screen', async () => {
+    await waitLive(ph.page);
+    await ph.page.waitForTimeout(1500);
+    assert.equal(await ph.page.evaluate(() => typeof window.echarts), 'undefined', 'not evaluated while the timeline is far below the fold');
+    assert.equal(await ph.page.locator('#tl-chart canvas').count(), 0);
+    assert.ok(ph.requested.some(p => p.endsWith('/vendor/echarts.slim.min.js')), 'but the file is fetched early (preload), so scrolling does not wait on the network');
+    assert.notEqual(await ph.page.textContent('#ov-level'), '—', 'the hero does not wait for charts');
+    await ph.page.locator('#ov-timeline').scrollIntoViewIfNeeded();
+    await ph.page.waitForSelector('#tl-chart canvas', { timeout: 10000 });
+    assert.equal(await ph.page.evaluate(() => typeof window.echarts), 'object');
+    assert.equal(ph.requested.filter(p => p.endsWith('/vendor/echarts.slim.min.js')).length, 1, 'fetched once, not again when it runs');
+    assert.deepEqual(ph.errors, []);
+  });
+  await ph.context.close();
+  const pp = await open(browser, { device: 'iPhone 13' });
+  await step('printing on a phone before the timeline has loaded says so, loads it, and a second print has the chart', async () => {
+    await waitLive(pp.page);
+    await pp.page.waitForTimeout(1500);
+    assert.equal(await pp.page.evaluate(() => typeof window.echarts), 'undefined', 'the chart is not loaded yet');
+    await pp.page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+    assert.match(await pp.page.textContent('#print-stamp'), /The timeline chart had not loaded when this was printed\./, 'the printout does not silently lack its chart');
+    await pp.page.waitForSelector('#tl-chart canvas', { timeout: 10000 }); // loaded without any scrolling
+    await pp.page.waitForTimeout(500);
+    const canvases = await pp.page.locator('#tl-chart canvas').count();
+    await pp.page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+    assert.doesNotMatch(await pp.page.textContent('#print-stamp'), /had not loaded/, 'a second print has the chart');
+    await pp.page.waitForTimeout(500);
+    assert.equal(await pp.page.locator('#tl-chart canvas').count(), canvases, 'asking again does not draw a second chart');
+    assert.equal(pp.requested.filter(p => p.endsWith('/vendor/echarts.slim.min.js')).length, 1, 'the library is fetched once');
+    await pp.page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+    assert.deepEqual(pp.errors, []);
+  });
+  await pp.context.close();
+  const ne = await open(browser, { scenario: 'noecharts' });
+  await step('a failed charting library leaves the hero and KPIs working, and the timeline offers a retry', async () => {
+    await waitLive(ne.page);
+    await ne.page.waitForSelector('#ov-timeline .state-error', { timeout: 10000 });
+    assert.match(await ne.page.textContent('#ov-timeline .state-error'), /charting library could not be loaded/);
+    assert.notEqual(await ne.page.textContent('#ov-level'), '—');
+    assert.equal(await ne.page.locator('.kpi').count(), 6);
+    for (let i = 0; i < 3 && !(await ne.page.locator('#tl-chart canvas').count()); i++) {
+      await ne.page.click('#ov-timeline .state-error button');
+      await ne.page.waitForTimeout(800);
+    }
+    await ne.page.waitForSelector('#tl-chart canvas', { timeout: 10000 });
+    assert.equal(await ne.page.locator('#ov-timeline .state-error').count(), 0, 'the error is cleared once it loads');
+  });
+  await ne.context.close();
+  const xi = await open(browser, { path: '/?view=explore' });
+  await step('explore save image: the measure, the stations and the period are in the picture; a replay says where it stopped', async () => {
+    const opts = { button: '#ex-png', canvas: '#ex-chart canvas', note: '#ex-sub', noteRe: 'station' };
+    await xi.page.waitForSelector('#ex-chart canvas', { timeout: 15000 });
+    await xi.page.check('#ex-stations input[value="2001"]');
+    await xi.page.waitForFunction(() => /2 stations/.test(document.querySelector('#ex-sub').textContent));
+    const shot = await saveImage(xi.page, opts);
+    assert.match(shot.name, /^explore-stage-24h-chart-\d{4}-\d\d-\d\d-\d{4}\.png$/);
+    assert.equal(shot.bytes.subarray(0, 8).toString('hex'), PNG_SIGNATURE);
+    assert.match(shot.drawn, /Stage \(m above station datum\): (Bewdley, Diglis|Diglis, Bewdley)/);
+    assert.match(shot.drawn, /Last 24 hours, .+ to .+ \((GMT|BST)\) · UK time/);
+    assert.match(shot.drawn, /Different datums: compare shapes and timing, not heights/, 'two gauges on one stage axis carry the page\'s own warning about it');
+    assert.doesNotMatch(shot.drawn, /replay at/, 'a whole window is not a replay');
+    assert.match(shot.drawn, /unofficial summary of Environment Agency real-time data/);
+    assert.match(shot.drawn, /official flood warnings use GOV\.UK/);
+    assert.ok(shot.picture.header > 3 && shot.picture.footer > 3 && shot.picture.middle > 3);
+    // Part-way through a playback the chart shows only the readings up to the playhead, and the picture says so.
+    await xi.page.evaluate(() => { const e = document.querySelector('#ex-scrub'); e.value = 500; e.dispatchEvent(new Event('input')); });
+    const part = await saveImage(xi.page, opts);
+    assert.match(part.drawn, /· replay at \w{3}, \d+ \w{3} \d{4}, \d\d:\d\d (GMT|BST): later readings are not shown/);
+    // A full redraw part-way through a replay (annotations switched off and on, the theme, a note) keeps the replay: the chart, the
+    // scrubber and the picture's caption must all describe the same thing.
+    const plotted = () => xi.page.evaluate(() => echarts.getInstanceByDom(document.querySelector('#ex-chart')).getOption().series[0].data.length);
+    const partial = await plotted();
+    await xi.page.evaluate(() => { const e = document.querySelector('#ex-scrub'); e.value = 1000; e.dispatchEvent(new Event('input')); });
+    const whole = await plotted();
+    assert.ok(partial < whole, `a replay plots fewer points than the whole window (${partial} < ${whole})`);
+    await xi.page.evaluate(() => { const e = document.querySelector('#ex-scrub'); e.value = 500; e.dispatchEvent(new Event('input')); });
+    await xi.page.click('#ex-auto'); // a full redraw
+    await xi.page.waitForTimeout(300);
+    assert.equal(await plotted(), partial, 'still the replay after a full redraw');
+    assert.match((await saveImage(xi.page, opts)).drawn, /replay at /, 'and the picture says so');
+    await xi.page.click('#ex-auto');
+    await xi.page.evaluate(() => { const e = document.querySelector('#ex-scrub'); e.value = 1000; e.dispatchEvent(new Event('input')); });
+    assert.equal(await plotted(), whole, 'back at the end it is the whole window again');
+    assert.doesNotMatch((await saveImage(xi.page, opts)).drawn, /replay at /);
+    // Another measure names itself in the picture and in the file name.
+    await xi.page.evaluate(() => { const e = document.querySelector('#ex-scrub'); e.value = 1000; e.dispatchEvent(new Event('input')); });
+    await xi.page.click('#ex-metric [data-metric="rate"]');
+    await xi.page.waitForFunction(() => /Rate of change/.test(document.querySelector('#ex-chart-title').textContent));
+    const rate = await saveImage(xi.page, opts);
+    assert.match(rate.name, /^explore-rate-24h-chart-/);
+    assert.match(rate.drawn, /Rate of change \(cm per hour\): /);
+    assert.doesNotMatch(rate.drawn, /Different datums/, 'a rate has no datum, so there is nothing to warn about');
+  });
+  assert.deepEqual(xi.errors, []);
+  await xi.context.close();
+  const dh = await open(browser, { path: '/?view=history' });
+  await step('a direct link to a chart view waits for the library and then draws', async () => {
+    await dh.page.waitForSelector('#hi-chart canvas', { timeout: 15000 });
+    assert.equal(await dh.page.locator('#view-history .lib-error').count(), 0);
+    assert.deepEqual(dh.errors, []);
+  });
+  await dh.context.close();
+  const na = await open(browser, { path: '/?view=analysis', scenario: 'noecharts' });
+  await step('a chart view shows "Charts unavailable" with a working retry when the library fails', async () => {
+    await na.page.waitForSelector('#view-analysis .lib-error', { timeout: 10000 });
+    assert.match(await na.page.textContent('#view-analysis .lib-error'), /Charts unavailable\..*could not be loaded/);
+    for (let i = 0; i < 3 && !(await na.page.locator('#an-multi-chart canvas').count()); i++) {
+      if (await na.page.locator('#view-analysis .lib-error button').count()) await na.page.click('#view-analysis .lib-error button');
+      await na.page.waitForTimeout(800);
+    }
+    await na.page.waitForSelector('#an-multi-chart canvas', { timeout: 10000 });
+    assert.equal(await na.page.locator('#view-analysis .lib-error').count(), 0);
+  });
+  await na.context.close();
   const dm = await open(browser, { path: '/?view=map' });
   await step('a direct link to the map loads straight into it', async () => {
     await dm.page.waitForFunction(() => document.querySelectorAll('.gauge-marker').length === 7, null, { timeout: 15000 });
@@ -405,6 +710,20 @@ try {
   });
   await far.context.close();
 
+  /* ---------- The Overview does not jump around while the first data arrives ---------- */
+  // The placeholders are painted first and every EA answer arrives 1.5 s later, as on a real connection.
+  for (const [name, opts, limit] of [['phone', { device: 'iPhone 13' }, 0.1], ['desktop', {}, 0.05]]) {
+    const sh = await open(browser, { ...opts, scenario: 'late', watchShifts: true });
+    await step(`overview on a ${name}: layout shift while the data arrives stays under ${limit}${limit === 0.1 ? ' (Google\'s "good" limit)' : ''}`, async () => {
+      await waitLive(sh.page);
+      await sh.page.waitForTimeout(2500);
+      const cls = await sh.page.evaluate(() => window.__shift);
+      console.log(`    (${name} CLS ${cls.toFixed(3)})`);
+      assert.ok(cls < limit, `layout shift ${cls.toFixed(3)}`);
+    });
+    await sh.context.close();
+  }
+
   /* ---------- A gauge the EA has not updated for hours is named in the status pill ---------- */
   const lag = await open(browser, { scenario: 'delayed' });
   await step('status pill: "Live" also says when another gauge is hours behind', async () => {
@@ -414,7 +733,67 @@ try {
     assert.match(await lag.page.getAttribute('#live-status', 'title'), /Delayed: Bransford, last reading .*; the EA has not published a newer one/);
     assert.equal(await lag.page.getAttribute('#live-status', 'data-mode'), 'live', 'Diglis itself is current, so the pill is not in its warning state');
   });
+  await step('river diagram: a delayed gauge fades its graphics but never its words, and the Teme\'s curve stays clear of the labels', async () => {
+    const d = await lag.page.evaluate(() => {
+      const node = document.querySelector('#st-river .rs-wide .rs-node[data-id="2086"]');
+      const effective = el => { let o = 1; for (let e = el; e; e = e.parentElement) { o *= Number(getComputedStyle(e).opacity); if (e.classList.contains('rs')) break; } return o; }; // up to the drawing itself: the page's own fade-in is not the diagram's
+      const text = node.querySelector('.rs-words');
+      const box = text.getBoundingClientRect(), river = document.querySelector('#st-river .rs-wide .rs-teme').getBoundingClientRect();
+      return { is: node.classList.contains('is-delayed'), words: text.textContent, wordsOpacity: effective(text), nameOpacity: effective(node.querySelector('.rs-name')), meter: effective(node.querySelector('.rs-meter')), dot: effective(node.querySelector('.rs-dot')), italic: getComputedStyle(text).fontStyle, ink: getComputedStyle(text).fill === getComputedStyle(node.querySelector('.rs-name')).fill, wordsRight: box.right };
+    });
+    assert.ok(d.is && /· delayed$/.test(d.words), JSON.stringify(d));
+    assert.equal(d.wordsOpacity, 1, 'the words are not faded');
+    assert.equal(d.nameOpacity, 1);
+    assert.ok(d.meter < 1 && d.dot < 1, 'the graphics are');
+    assert.equal(d.italic, 'italic');
+    assert.ok(d.ink, 'in the same ink as the name, so the same contrast');
+    // The text must end before the Teme joins the Severn (the curve between x=590 and 664 of the 1040-wide drawing).
+    const clear = await lag.page.evaluate(() => { const svg = document.querySelector('#st-river .rs-wide'), k = svg.getBoundingClientRect().width / 1040, left = svg.getBoundingClientRect().left; return { wordsEnd: (document.querySelector('.rs-wide .rs-node[data-id="2086"] .rs-words').getBoundingClientRect().right - left) / k }; });
+    assert.ok(clear.wordsEnd < 600, `the words end at x=${Math.round(clear.wordsEnd)} of 1040, before the curve starts at 590`.replace('before', clear.wordsEnd < 590 ? 'before' : 'about'));
+  });
+  await step('data confidence: the drawer lists readings received per gauge, and flags a feed that has gone quiet', async () => {
+    await lag.page.click('#live-status');
+    await lag.page.waitForSelector('#intel.open [data-sec="confidence"] tbody tr');
+    const rows = await lag.page.$$eval('#intel [data-sec="confidence"] tbody tr', trs => Object.fromEntries(trs.map(tr => [tr.dataset.id, [...tr.cells].map(c => c.textContent.trim())])));
+    assert.deepEqual(rows['2085'], ['Diglis', '96 of 96', 'none'], 'a healthy gauge: everything in the period arrived, and a normal publishing delay is not a gap');
+    assert.equal(rows['2001'][1], '96 of 96');
+    assert.equal(rows['2086'][0], 'Bransford');
+    assert.equal(rows['2086'][1], '84 of 96', 'the feed stopped 4 h before now, so 12 readings of the period are missing');
+    assert.match(rows['2086'][2], /^4 h( \d+ min)? \(ongoing\)$/, 'about 4 h of silence since the newest reading, measured to now');
+    assert.match(await lag.page.textContent('#intel [data-sec="confidence"]'), /A gap is a break of more than 30 minutes/);
+    await lag.page.waitForFunction(() => !document.querySelector('.toast'), null, { timeout: 6000 }).catch(() => {});
+    await lag.page.waitForTimeout(600);
+    assert.deepEqual(await axeViolations(lag.page), [], 'the open confidence table is accessible (light)');
+    await lag.page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+    await lag.page.waitForTimeout(400);
+    assert.deepEqual(await axeViolations(lag.page), [], 'the open confidence table is accessible (dark)');
+  });
   await lag.context.close();
+  const pf = await open(browser, { scenario: 'primaryfirst' });
+  await step('data confidence: no half-loaded table while the other gauges\' histories are still arriving', async () => {
+    await pf.page.waitForFunction(() => window.__wr?.live.status.mode === 'live' && window.__wr.live.status.refreshing && window.__wr.live.series['2085']?.length, null, { timeout: 15000 });
+    assert.equal(await pf.page.evaluate(() => Object.keys(window.__wr.live.series).length), 1, 'only Diglis has its history so far');
+    await pf.page.click('#live-status');
+    await pf.page.waitForSelector('#intel.open [data-sec="confidence"] summary');
+    assert.equal(await pf.page.locator('#intel [data-sec="confidence"] tbody tr').count(), 0, 'no "0 of 96" rows for gauges that simply have not loaded');
+    await pf.page.waitForFunction(() => window.__wr.live.status.refreshing === false, null, { timeout: 30000 });
+    await pf.page.waitForSelector('#intel [data-sec="confidence"] tbody tr');
+    assert.equal(await pf.page.locator('#intel [data-sec="confidence"] tbody tr').count(), 7, 'the table appears once everything has loaded');
+    assert.equal(await pf.page.textContent('#intel [data-sec="confidence"] tr[data-id="2001"] td:nth-child(2)'), '96 of 96');
+  });
+  await pf.context.close();
+  const bad = await open(browser, { scenario: 'badgauge' });
+  await step('data confidence: a gauge whose history failed to load is not counted as missing readings', async () => {
+    await waitLive(bad.page);
+    await bad.page.waitForFunction(() => window.__wr.live.status.refreshing === false && window.__wr.live.historyLoaded, null, { timeout: 15000 });
+    await bad.page.click('#live-status');
+    await bad.page.waitForSelector('#intel [data-sec="confidence"] tbody tr');
+    const rows = await bad.page.$$eval('#intel [data-sec="confidence"] tbody tr', trs => Object.fromEntries(trs.map(tr => [tr.dataset.id, [...tr.cells].map(c => c.textContent.trim())])));
+    assert.deepEqual(rows['2086'], ['Bransford', '—', 'not fetched this time'], 'no "0 of 96 / 25 h (ongoing)" for a request this site failed to make');
+    assert.equal(rows['2085'][1], '96 of 96');
+    assert.match(await bad.page.textContent('#intel [data-sec="confidence"]'), /"Not fetched this time" is different: this site's own request/);
+  });
+  await bad.context.close();
   await step('status pill: all gauges current means no extra words', async () => {
     assert.match(await page.textContent('#live-status'), /^Live · \d\d:\d\d$/);
   });
@@ -464,8 +843,84 @@ try {
     assert.match(await off.page.textContent('#live-status'), /Offline snapshot/);
     assert.notEqual(await off.page.textContent('#ov-level'), '—');
     assert.match(await off.page.textContent('#ov-verdict'), /^Not current · last reading was /);
+    await off.page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+    assert.match(await off.page.textContent('#print-stamp'), /Saved offline snapshot taken .*: not current conditions\./, 'a printed snapshot says it is one');
+  });
+  await step('save image: an offline snapshot picture says SNAPSHOT in its text and its name; an empty chart says so instead of saving a blank', async () => {
+    const at = await off.page.evaluate(() => window.__wr.live.status.snapshotAt);
+    assert.ok(Number.isFinite(at), 'the snapshot has a date');
+    // 40 days on, no range (24 h to 30 d) reaches the snapshot's readings: nothing to take a picture of.
+    await off.page.clock.setFixedTime(at + 40 * 24 * 3600e3);
+    await off.page.click('#tl-range [data-range="7d"]');
+    await off.page.waitForFunction(() => /^No readings for/.test(document.querySelector('#tl-note').textContent));
+    await off.page.click('#tl-png');
+    await off.page.waitForSelector('#toasts .toast');
+    assert.match(await off.page.textContent('#toasts'), /There are no readings in this chart to save a picture of\./);
+    // An hour after the snapshot was taken, its last day of readings is in the 24-hour window.
+    await off.page.clock.setFixedTime(at + 3600e3);
+    await off.page.click('#tl-range [data-range="24h"]');
+    const shot = await saveImage(off.page);
+    assert.match(shot.name, /^SNAPSHOT-diglis-24h-chart-\d{4}-\d\d-\d\d-\d{4}\.png$/);
+    assert.match(shot.drawn, /Saved offline snapshot taken .*: not current conditions\. Saved /);
+    assert.doesNotMatch(shot.drawn, /Latest Diglis reading/);
   });
   await off.context.close();
+
+  /* ---------- Save image while its code is still loading ---------- */
+  const sp = await open(browser, { scenario: 'slowpicture' });
+  await waitLive(sp.page);
+  await step('save image: changing the chart while the picture code loads cannot give one chart another one\'s caption', async () => {
+    const shot = await saveImage(sp.page, {
+      during: async () => {
+        await sp.page.check('#tl-upstream'); // the comparison view, while the 1.5 s load is still running
+        await sp.page.waitForFunction(() => /Bewdley/.test(document.querySelector('#tl-sub').textContent));
+      },
+    });
+    assert.match(shot.drawn, /River level change since the start of the period: Bewdley \(upstream\) and Diglis/);
+    assert.match(shot.drawn, /· change in cm · UK time/);
+    assert.doesNotMatch(shot.drawn, /metres above station datum/, 'a change-in-cm chart is not labelled as metres');
+  });
+  await sp.context.close();
+  const np = await open(browser, { scenario: 'nopicture' });
+  await waitLive(np.page);
+  await step('save image: if the picture code cannot be fetched, the visitor is told plainly and nothing is saved', async () => {
+    await np.page.waitForFunction(() => document.querySelector('#tl-chart canvas'));
+    let saved = false;
+    np.page.on('download', () => { saved = true; });
+    await np.page.click('#tl-png');
+    await np.page.waitForSelector('#toasts .toast-error');
+    assert.match(await np.page.textContent('#toasts'), /The picture code could not be loaded\. Check your connection and try again\./);
+    assert.doesNotMatch(await np.page.textContent('#toasts'), /dynamically imported|Failed to fetch/, 'not the browser\'s own wording');
+    assert.equal(saved, false);
+  });
+  await np.context.close();
+
+  /* ---------- Narrow phones: nothing wider than the screen (360 px is the most common Android width; 320 the smallest) ---------- */
+  for (const width of [360, 320]) {
+    await step(`${width} px phone: no view scrolls sideways, and the header's buttons stay on screen`, async () => {
+      for (const view of ['overview', 'map', 'analysis', 'explore', 'history']) {
+        const n = await open(browser, { path: `/?view=${view}`, viewport: { width, height: 740 } });
+        try {
+          await waitLive(n.page);
+          await n.page.waitForTimeout(800);
+          const m = await n.page.evaluate(() => {
+            const W = document.documentElement.clientWidth, name = document.querySelector('.brand b'), brand = document.querySelector('.brand span');
+            return {
+              over: document.documentElement.scrollWidth - W,
+              toolsRight: Math.max(...[...document.querySelectorAll('.topbar-tools > *')].map(e => Math.round(e.getBoundingClientRect().right))),
+              W, nameClipped: name.scrollWidth > name.clientWidth + 1, nameShown: getComputedStyle(brand).display !== 'none',
+              linkName: document.querySelector('.brand').getAttribute('aria-label'),
+            };
+          });
+          assert.ok(m.over <= 0, `${view}: the page is ${m.over}px wider than the screen`);
+          assert.ok(m.toolsRight <= m.W, `${view}: the header's last button ends at ${m.toolsRight} of ${m.W}`);
+          assert.match(m.linkName, /Worcester River/, 'the logo link always has its name');
+          if (width === 360) assert.ok(m.nameShown && !m.nameClipped, `${view}: at 360 px the name is shown in full (it wraps onto two lines)`);
+          else assert.ok(!m.nameShown, `${view}: at 320 px only the logo is shown`);
+        } finally { await n.context.close(); }
+      }
+    });
+  }
 
   /* ---------- Demo replay: real Feb 2020 readings, labelled everywhere ---------- */
   const demo = await open(browser, { path: '/?demo=feb2020' });
@@ -477,6 +932,8 @@ try {
     assert.match(await demo.page.textContent('#demo-banner'), /DEMO REPLAY · NOT CURRENT CONDITIONS/);
     assert.match(await demo.page.textContent('#demo-banner'), /illustrative, not real/);
     assert.match(await demo.page.textContent('#live-status'), /Demo replay/);
+    await demo.page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+    assert.match(await demo.page.textContent('#print-stamp'), /DEMO REPLAY of February 2020: illustrative, not current conditions\./, 'a printed demo cannot pass for a real flood');
     assert.ok(await demo.page.isHidden('#ov-demo-link'));
     await demo.page.click('.primary-nav [data-nav="analysis"]');
     assert.match(demo.page.url(), /demo=feb2020/, 'demo survives navigation');
@@ -486,6 +943,14 @@ try {
     await demo.page.waitForFunction(() => !document.querySelector('.toast'), null, { timeout: 6000 }).catch(() => {});
     if (process.env.E2E_SHOTS) await demo.page.screenshot({ path: `${process.env.E2E_SHOTS}/demo.png`, fullPage: false });
     assert.deepEqual(await axeViolations(demo.page), []);
+  });
+  await step('save image: a demo replay picture says DEMO in its text and its name, and never offers a latest reading', async () => {
+    const shot = await saveImage(demo.page);
+    assert.match(shot.name, /^DEMO-replay-diglis-24h-chart-\d{4}-\d\d-\d\d-\d{4}\.png$/);
+    assert.match(shot.drawn, /DEMO REPLAY of February 2020: illustrative, not current conditions\. Saved /);
+    assert.doesNotMatch(shot.drawn, /Latest Diglis reading/);
+    assert.match(shot.drawn, /official flood warnings use GOV\.UK/);
+    assert.ok(shot.picture.header > 3 && shot.picture.footer > 3 && shot.picture.middle > 3);
   });
   await step('demo replay: a real flow reading is never shown beside the replayed flood level', async () => {
     await demo.page.click('.primary-nav [data-nav="map"]');
@@ -611,6 +1076,14 @@ try {
       assert.ok(over <= 1, `overflows by ${over}px`);
     });
   }
+  await step('river diagram on a phone: the top-to-bottom drawing, inside the screen', async () => {
+    await mob.page.click('.bottom-nav [data-nav="overview"]');
+    await mob.page.waitForSelector('#st-river .rs-tall .rs-node');
+    assert.ok(await mob.page.isVisible('#st-river .rs-tall') && await mob.page.isHidden('#st-river .rs-wide'));
+    assert.equal(await mob.page.locator('#st-river .rs-tall .rs-node').count(), 7);
+    const fit = await mob.page.evaluate(() => { const w = document.documentElement.clientWidth; return [...document.querySelectorAll('#st-river .rs-tall text')].map(t => Math.round(t.getBoundingClientRect().right)).filter(r => r > w); });
+    assert.deepEqual(fit, [], 'no label runs off the screen');
+  });
   await step('mobile overview: a card\'s "cm / 24 h" change never splits across lines', async () => {
     await mob.page.setViewportSize({ width: 320, height: 700 });
     await mob.page.click('.bottom-nav [data-nav="overview"]');

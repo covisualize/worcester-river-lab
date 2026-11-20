@@ -24,15 +24,28 @@ Anything broken here takes priority over the backlog.
 - [x] Accessibility audit (WCAG 2.2 AA + best practice, axe-core): zero violations on all
       5 views in both themes; chart screen-reader summaries; regression test in e2e.
 - [ ] Accessibility follow-up: manual screen-reader pass (VoiceOver/NVDA) over the map
-      panel and Explore playback; a visible "skip to chart data" table option.
+      panel and Explore playback. (The visible chart-data table is done for the Overview timeline, see 2026-11-12; Analysis,
+      Explore and History charts still have only their text summary.)
 - [x] Fallback snapshot covers all 7 gauges (weekly `research/build_snapshot.py`, kept unless
       all 7 gauges respond) and outage messages are plain English instead of "Failed to fetch".
 - [x] Performance, step 1: slim ECharts bundle (only the charts/components used; built by
       `npm run vendor` from scripts/echarts-entry.mjs): 339 → 218 KB gzip, 1034 → 643 KB to parse.
 - [x] Performance, step 2: Leaflet (+ its stylesheet, 45,890 bytes gzip) loads on first Map/Explore
       use.
-- [ ] Performance, next: Lighthouse on a real phone; consider deferring the ECharts bundle (218 KB
-      gzip) the same way for views that draw no chart on first paint (it is needed on Overview).
+- [x] Performance, step 3: no layout jump while the first data arrives (CLS 0.6 → ~0.02 in Lighthouse mobile; see 2026-11-04).
+- [x] Performance, step 4: ECharts (218 KB gzip) is fetched early at low priority but only run when a chart is
+      about to be drawn (the Overview timeline when its panel nears the screen; Analysis, Explore and History
+      before they mount); see 2026-11-05.
+- [ ] Performance, next: a Lighthouse run on a real phone (all Lighthouse numbers so far are its emulated mobile:
+      Moto G Power, 4x CPU slowdown, slow 4G). Remaining findings on 5 Nov: LCP about 3 s live (6 s on an
+      uncompressed local server), 25 KiB unused JavaScript, main-thread style/layout work. GitHub Pages sets the
+      cache lifetime, so "efficient cache lifetimes" cannot be fixed here.
+      Tried and not shipped (2026-11-08): `<link rel="modulepreload">` for the 14 modules of js/main.js (the browser
+      otherwise finds the import graph level by level). Real throttled timing, gzip server, 6-8 runs: first EA call
+      1.29 → 0.85 s and river level on screen 2.0 → 1.6 s (-0.44 s), but first paint of the empty shell 0.46 → 0.58 s;
+      Lighthouse mobile (gzip) shows no gain (LCP and TTI 2.9 s both ways) and a later FCP (1.1-1.3 → 1.6-1.7 s), score
+      95-96 → 92-95. `preconnect` to the EA added nothing. `fetchpriority="low"` on the hints did not recover the paint.
+      A real-phone or HTTP/2 result could differ; measure with `scripts/measure-load.mjs` before trying again.
 - [x] Warnings near Worcester (EA flood areas within 12 km) vs elsewhere in the 40 km search:
       only local ones colour the Overview verdict.
 - [x] Flood info drawer and header badge: warnings tagged "near Worcester" or "elsewhere".
@@ -43,6 +56,26 @@ Anything broken here takes priority over the backlog.
       (EA `/id/floods` includes severity 4 "no longer in force").
 - [ ] Upstream travel-time explorer: cross-correlate Bewdley → Diglis level changes over
       recent events to show the *observed* lag range (descriptive, not a forecast).
+      Checked 2026-11-08: the live feed's last 28 days contain one real upstream-driven rise, too few to say anything.
+      **Settled 2026-11-14: do not build a "typical lag" or "the water reaches Worcester in about X hours".** The EA Hydrology
+      API holds the long history that was missing: 15-minute levels at Diglis since 1986 and at Bewdley (first reading
+      dated 1970, probably a placeholder); 2016-2025 is complete for both (35,040 of 35,040 readings in every sampled
+      year; about 6,000 Diglis readings a year in 2021 and 2023 are not marked "Good"); one request per year.
+      `research/upstream-lag.mjs` (tested, reproducible, rule fixed in advance: a Diglis peak that rose at least 1 m in
+      72 h; upstream-driven if Bewdley rose at least 0.5 m before it) found, over 2016-2025, 66 such events: 51 with a
+      clean Bewdley peak, 9 where Bewdley was **still rising when Diglis peaked** (so it has no peak to measure from), and
+      6 with no usable Bewdley rise. For the 51 clean ones the gap from the Bewdley peak to the Diglis peak is **0.3 to 41
+      hours, middle half 4.8 to 16.3 hours (median 8.0 h), and 7 of the 51 are within an hour**. Same shape with "Good"
+      readings only (46 events: median 8.6 h, middle half 2.4-16.6 h), at a 0.5 m threshold (81 events: median 10.0 h,
+      5.0-15.3 h) and at 2 m (17 events: median 6.3 h, 1.0-15.3 h). A single number would mislead: half of the events
+      fall in a band 11 hours wide, and one upstream-driven event in seven has the upstream gauge still rising when
+      Worcester peaks. Seen live on 14 Nov: Bewdley +38 cm in 24 h while Diglis moved +1 cm, which is why an "upstream
+      is rising" banner on the Overview was also rejected. Correction, caught in review: the first version of the tool
+      took the last reading in the window as the "Bewdley peak" when Bewdley was still rising and reported a lag of 0,
+      which overstated simultaneity (16 of 60 events "within an hour"; 9 of those 16 were this artefact). Such events are
+      now counted as censored, and the upstream peak's own 72 h baseline must be observed too.
+      If wanted later, the honest form is the spread for past events ("in 51 events since 2016 the Bewdley peak came 0.3
+      to 41 h before Diglis's; half of them 5 to 16 h"), or per-event upstream context in the History view, never a prediction.
 - [x] Flow data, step 1: the map panel shows the EA's latest flow (m³/s, with time) for the gauges that
       publish it (Bewdley, Saxons Lode), labelled as EA-reported (see 2026-11-01).
 - [ ] Flow data, step 2: flow history as an Explore measure; needs the flow readings endpoint, a
@@ -51,14 +84,261 @@ Anything broken here takes priority over the backlog.
 - [ ] Teme confluence view: Severn vs Teme contribution around Worcester during events.
 - [ ] Offline/PWA: cache the shell and last readings so the page opens without signal,
       clearly marked as cached.
-- [ ] Shareable PNG/CSV of any chart view; print stylesheet for a one-page report.
-- [ ] Data-quality panel: per-station completeness for the selected window.
+- [x] Print stylesheet: dated stamp, no dead buttons, chart fits the page (see 2026-11-06). It is three A4 pages, not one.
+- [ ] Shareable PNG/CSV of any chart view. Step 1 done (2026-11-09): the Overview timeline has "Save image", a PNG with a
+      title and period above the chart and, below it, which reading it shows (or that it is a demo or an offline snapshot),
+      when it was saved, that it is unofficial, the EA source and licence, and the official-warnings pointer; a demo or
+      snapshot also says so in the file name. Step 2 done (2026-11-11): the same on Explore (see that entry). Left: Analysis
+      and History charts (`saveChartPicture()` in `js/ui.js` and `chartPicture()` in `js/chart-image.js` take any ECharts
+      instance; each chart needs its own title, period and caveat lines), and a phone share sheet (`navigator.share` with a
+      file), which needs a real phone to test.
+- [x] Data-quality panel, step 1: per-gauge completeness for the last 24 h in the Flood info drawer's "Data
+      confidence" section (readings received of 96, longest gap), see 2026-11-03.
+- [ ] Data-quality panel, step 2: completeness for the window chosen in Explore, and for the Hydrology archive.
 - [x] Unit tests for `api.js` normalisation and the `live.js` state machine (see 2026-10-29).
 - [x] Phone nit: keep "24 h" together in the station-card change line (non-breaking space; done in PR #17, 2026-10-30).
 - [ ] Optional custom domain once the owner buys one (see README).
 
 ## Log
 <!-- newest first: date — PR — what changed / what was checked -->
+- 2026-11-14 — daily/2026-11-14-upstream-lag-evidence — Health: site live on desktop+mobile, no console errors, no overflow;
+  all 7 gauges current (20-35 min); no warnings within 40 km; EA shapes unchanged; deploy of #32 green; open PRs #30, #31 and
+  #33 (mine, awaiting review; not touched). No site change today, on purpose. The health data showed Bewdley at 0.66 m,
+  +38 cm in 24 h (and already falling), while Diglis was +1 cm: the obvious idea was an "upstream is rising" line on the
+  Overview. Before building it I tested the question the backlog had been blocked on, whether past events show a usable
+  upstream-to-Worcester lag, and the answer is no (see the "Upstream travel-time explorer" item: for 51 clean events the
+  gap is 0.3 to 41 h, middle half 4.8 to 16.3 h; in 9 more Bewdley was still rising when Diglis peaked), so a banner or a
+  "typical lag" would have implied something the record does not support. What is kept: the Hydrology archive holds a complete
+  15-minute record for both gauges (the blocker in the backlog), and `research/upstream-lag.mjs` is a reproducible, tested
+  way to ask the question again (`node research/upstream-lag.mjs --cache DIR`; 10 years = 20 requests, about 30 s). Tests: 10
+  unit tests on synthetic series where the right answer is known (a 10 h lag, no upstream rise = unmatched, thresholds,
+  merging peaks within 48 h, gaps are never judged, the quantiles, and the two Codex cases below); breaking the upstream-rise
+  check or flipping the lag's sign each fails the right test. Codex review found a real flaw in my first version: when Bewdley
+  was still rising at Diglis's peak I took the last reading as the "Bewdley peak" and reported a lag of 0, and I never checked
+  the upstream peak's own 72 h baseline for gaps. Both reproduced with synthetic series first (the tests failed), then fixed:
+  such events are censored, and the baseline must be observed. The correction changed the numbers I had written up (16 of 60
+  within an hour became 7 of 51; middle half 0.7-14.9 h became 4.8-16.3 h; median 6.4 h became 8.0 h): the first figures
+  overstated simultaneity, and the conclusion (no stable lag) holds on the corrected ones.
+- 2026-11-13 — daily/2026-11-13-narrow-phones — Health: site live on desktop+mobile, no console errors; all 7 gauges current
+  (24 min); no warnings within 40 km; EA shapes unchanged; deploy of #32 green; open PRs #30 and #31 (mine, awaiting review,
+  merged up with main on 12 Nov; not touched). Found while looking at the shipped readings table on a phone: at 360 px wide
+  (the most common Android width) every view scrolled sideways by 4 px, and at 320 px by 44 px. Cause: the header. The base
+  `.brand` rule says `flex: none`, so the phone rule's `min-width: 0` and the title's ellipsis never applied, and the brand plus
+  four 44 px touch-target buttons needed about 364 px. Two more, at 320 px only: Explore (32 px) and History (17 px), from
+  single-column grids written as `1fr` (which cannot shrink below the widest label) and an over-wide select. Fixes: the brand
+  may shrink; its name wraps onto two lines where one does not fit, and at 340 px and below only the logo shows (the link keeps
+  its accessible name); the grids are `minmax(0, 1fr)`; selects may shrink. Why it was missed: the "fits the screen" tests ran at
+  390 px only. Tests: two e2e steps (360 and 320 px) loading each of the five views and checking no sideways scroll, the
+  header's last button on screen, the name in full at 360 and logo-only at 320; they fail on the old CSS with the real
+  numbers (4 px, 44 px). Checked at 320, 360 and 390 px on all five views against the live EA, and by eye (light theme).
+  Not changed: desktop and print (the rules are phone-only).
+- 2026-11-12 — daily/2026-11-12-chart-table — Health: site live on desktop+mobile, no console errors, no overflow; all 7
+  gauges current (21 min); no warnings within 40 km; EA shapes unchanged; deploys of #28 and #29 green (weekly refresh runs
+  Monday); open PRs: #30 and #31 (mine, awaiting review; not touched). Change: the Overview timeline gets "Show the readings
+  as a table", the backlog's "visible chart data table" for people who cannot see the chart (a screen reader got only its
+  one-line summary) or would rather read than hover. A collapsed native <details> under the chart: the real readings behind it,
+  newest first, the latest 96 with a pointer to the CSV for the rest; in the Bewdley comparison one column per gauge, joined by
+  time, with a dash (and "no reading" for a screen reader) where a gauge has none, never interpolated (live data showed it at
+  once: Bewdley's 08:00 reading was in and Diglis's not yet). Levels are raw metres above each gauge's own datum, and the note
+  says they are not the cm change the chart shows. It is built from the data, not the chart, so it also works while the
+  charting library is loading, has failed, or the chart is empty; reachable by keyboard (details toggles on Enter; the scroll
+  region has a tabindex); hidden in print; a demo or snapshot says so in its note. Tests: 4 unit (joining, null for a missing
+  gauge, the limit keeps the newest, junk skipped) and 1 e2e step (collapsed by default, keyboard open and close, rows against
+  the fixtures with the first row the latest reading, column names, ARIA region, one caption and row headers, the axe audit with
+  the table open, the comparison view, the 96-row cap). Negative control: removing the print rule failed the print step and
+  removing the tabindex failed the table step. Two test-writing lessons: an axe run must wait for colour transitions to settle
+  (it caught a range button mid-fade), and waiting for `getAnimations().finished` hangs for ever on animations that repeat (the
+  live dot's pulse): wait only for finite ones. Looked at against the live EA on desktop, phone and dark.
+- 2026-11-11 — daily/2026-11-11-explore-image — Health: site live on desktop+mobile; the first health run logged one
+  console error per viewport (a readings-history request to the EA blocked "by CORS": the EA's gateway answered an error
+  page without the CORS header). That is the EA, not the site: the same request took 22 s on its first try (the EA slow spell
+  of 7 Nov again) and 0.5-0.7 s with the right header afterwards, two further runs on both viewports had no errors, and the
+  page had stayed in live mode with the latest values. 7 gauges current (Bransford 66 min); no warnings within 40 km; EA
+  shapes unchanged; deploys of #28 and #29 green; open PR: #30 (untouched). Change: "Save image" on Explore, the second chart
+  with a shareable picture. Title is the measure and the stations with data; the subtitle has the period (UK time), any station
+  with no readings, the page's own "Different datums: compare shapes and timing, not heights" warning when two or more
+  gauges share a stage axis, and, part-way through a playback, "replay at <time>: later readings are not shown" (the chart
+  and the picture show only the readings up to the playhead). Footer, demo and snapshot labelling and file names are shared
+  with the Overview picture (`explore-<measure>-<range>-chart-<date>-<time>.png`). Refactor: the safe ordering from the
+  Codex finding on #28 (load the picture code first, then read the chart and its caption in one synchronous step) now lives
+  once in `saveChartPicture()` in ui.js and both charts use it; the Overview's six e2e steps, including the slow-picture
+  race, still pass on it. Tests: 1 e2e step on Explore (two stations, partial playback, a second measure; PNG decoded, text
+  captured) and unit cases for the file name; negative controls: reading the chart before the code loads, and dropping the
+  replay wording, each failed the step that should. Looked at against the live EA on desktop and phone. Codex review found a
+  real inconsistency that was already on screen: a full redraw part-way through a replay (annotations toggled, theme changed, a
+  note added) put the whole window back on the chart while the scrubber stayed mid-way, so a saved picture would have said
+  "later readings are not shown" over a chart that showed them. Reproduced first (94 points plotted where the replay had 48),
+  then fixed at the cause: `draw()` now re-applies the playhead when a replay is part-way, so chart, scrubber and caption agree.
+- 2026-11-10 — daily/2026-11-10-delayed-legible — Health: site live on desktop+mobile, no console errors, no overflow;
+  6 of 7 gauges current (20-36 min); Bransford 141 min old, over the 2 h flag (it publishes late in batches, as before;
+  the pill says "1 gauge delayed" and its card says so); no warnings near Worcester (one elsewhere in England); EA shapes
+  unchanged; deploys of #28 and #29 green and the river diagram is live; no open PRs. Change: the first real delayed gauge
+  showed two flaws in yesterday's river diagram. (1) A delayed gauge faded all of its node, words included, so "delayed"
+  (the point) was the least readable text in the drawing and, at 60% opacity, under the 4.5:1 contrast minimum. Now only the
+  bar, dot and stem fade; the words stay at full contrast, in italic. (2) On the wide layout the Teme's curve touched the
+  longer "Within typical range · delayed" text; the confluence moved 40 units right (still above Kempsey, which is below it
+  on the river). Tests: 1 e2e step on the existing delayed-gauge scenario (words at effective opacity 1, graphics below 1,
+  italic, same ink as the name, text ends before the curve); it fails on the old CSS (0.6 !== 1). Looked at against the live
+  EA, desktop and phone. Lesson for the diagram: dim graphics, never text.
+- 2026-11-09 — ccr-a935da98-tkn87x (owner request: graphical and design improvements) — "The river at a glance": a
+  schematic above the station cards with the gauges in the order the water passes them, the Teme joining the Severn below
+  Diglis, and at each gauge a bar from its EA typical low to typical high filled to the latest reading (a line above the
+  bar when the reading is over the typical high), with the level, trend and range words. It draws only what the cards
+  already state (an e2e step compares the two), says "No data" where there is none, fades a delayed reading, and its caption
+  says it is a diagram, not a map, with nothing to scale. Left-to-right on wide screens, top-to-bottom below 900 px; colours
+  come from the theme variables; a text alternative lists every gauge. Looked at with live EA data (light, dark, phone,
+  tablet) and with the February 2020 demo replay for the high-water case. Tests: 7 unit, 2 e2e; axe audits and the
+  layout-shift limits still pass (phone 0.047, desktop 0.024). Not done: clicking a gauge in the diagram (the cards have
+  the Map and Explore buttons); the diagram is not in the saved picture or on the Map view.
+- 2026-11-09 — daily/2026-11-09-share-image — Health: site live on desktop+mobile, no console errors, no horizontal
+  overflow; all 7 gauges current (23 min); no warnings in force; EA shapes unchanged (station, latest readings, floods,
+  flow measure); the 8 Nov PRs (#26 slow-EA notice, #27 measuring tools) are merged and live (the notice text is in the
+  deployed main.js); deploys of both green, the Monday weekly refresh (run 6) and the deploy it triggered green (it changed
+  only the offline snapshot); no open PRs. Change: the Overview timeline gets "Save image". A bare screenshot of a river
+  level carries no date, source or "unofficial" note, and these pictures get pasted into group chats, so the PNG has a title and
+  the period above the chart and, below it: the latest Diglis reading it shows (or DEMO REPLAY, or the offline snapshot's
+  date, whichever applies), when it was saved, "unofficial summary of Environment Agency real-time data (Open Government
+  Licence v3)", and the GOV.UK / Floodline pointer; a demo or snapshot also says so in the file name
+  (`DEMO-replay-…`, `SNAPSHOT-…`). The zoom slider is left out (in a still picture it looks like a control that does
+  nothing). The "which reading / is it current" sentence used to live inside the print stamp: it is now `dataBasis()` in
+  data.js and the print stamp and the picture both use it, so they cannot disagree (the printout's text is unchanged,
+  covered by the existing print tests). The picture code (`js/chart-image.js`) is fetched on the first click, so the page's
+  start-up is unchanged. Tests: 8 unit (wording for live/demo/snapshot/no reading, file names including BST, text wrapping)
+  and 6 e2e steps that really click, receive the download and decode the PNG (signature, size, text in the header and footer
+  strips, chart in the middle) and capture every string drawn on the canvas, for live, compare view, demo replay and an
+  offline snapshot, plus a failed fetch of the picture code (plain message, nothing saved). Codex review found a race in the
+  first version: on the first click the caption was read before the picture code arrived, so switching to the Bewdley
+  comparison in that window gave a change-in-cm chart labelled "metres above station datum". Reproduced first with a 1.5 s
+  slow-picture scenario (the step failed on the old code), then fixed: nothing about the chart is read until the module is
+  loaded, and the capture starts in the same synchronous run (the file name's range also comes from the drawing). Negative control: sending `mode: 'live'` whatever the real mode, and dropping the warnings line, made the
+  live, demo and snapshot steps fail. Found by the snapshot test: an offline snapshot is days old, so the 24-hour chart is
+  empty ("No readings for Last 24 hours") and the first version of the button said "not ready yet"; it now says there are no
+  readings to save a picture of. Limits: checked in Chromium (desktop and phone emulation, light and dark) against the live
+  EA, not on a real iPhone or Android; a phone share sheet is not done; the picture shows the chart as drawn, including its
+  annotation pins (on a phone one can sit over the "EA typical range" label, as on screen).
+- 2026-11-08 — daily/2026-11-08-measure-load — Health: site live on desktop+mobile, no console errors, both
+  runs clean; all 7 gauges current (20 min; Bransford 95 min, under the 2 h flag); no warnings in force; last
+  deploy green (#24); weekly refresh runs Monday; open PR: #26 (untouched; this branch is from main). Change:
+  no site change today, because the two ideas I measured did not clear the bar. (1) Upstream travel-time
+  explorer: the data can't support it yet (see that backlog item: one real event in 28 days, and the second
+  rise gave 1.8 h against the first's 6.0 h). (2) `modulepreload` for the app's modules: faster data (-0.44 s)
+  but a later first paint, and Lighthouse sees no gain (see "Performance, next"). Two instruments disagreeing
+  with a measurable cost is not an improvement, so nothing was shipped. What is kept: `scripts/serve.mjs` can
+  now serve gzip (`--gzip`, like GitHub Pages) and another copy of the site (`--dir`), and the new
+  `scripts/measure-load.mjs A B [runs]` compares two copies under slow-4G throttling (first paint, first EA
+  call, river level on screen; medians of interleaved runs), which reproduced the numbers above. Method notes:
+  Playwright's `route.fulfill` skips the throttling for the page's own files and Playwright's `proxy` option
+  forces localhost through the proxy, so the harness uses real local servers and Chromium's own proxy flags;
+  an uncompressed server exaggerates the cost of extra files (Lighthouse FCP +0.6 s there, +0.5 s with gzip,
+  Lighthouse score 76 → 74 and 95 → 92-95).
+- 2026-11-07 — daily/2026-11-07-slow-ea-notice — Health: a first health run at 07:51 caught the EA in a slow
+  spell: on desktop the page was still "loading" with three gauges missing after the script's 45 s wait, and the
+  phone run logged console errors (text not captured, so I cannot say what they were). Direct requests to the EA at
+  that moment took 10.3 s (readings, then 0.5 s), 11.5 s (station details) and 13.5 s (warnings), so it was the EA,
+  not the site; six further runs (desktop and phone) over the next minutes were all healthy with no errors. All
+  7 gauges current (Bransford 37 min); no warnings in force; the four PRs merged on 6 Nov are deployed (last
+  deploy green, weekly refresh runs Monday); no open PRs. Change: simulating a slow EA (every answer 12 s late)
+  showed that a visitor sees "Connecting to EA…" and "Checking the river…" for the whole wait, identical at 11 s
+  to 1 s, with nothing saying that the wait is the EA's. After 6 s without any answer (gauge details count as an
+  answer, so the 8 s slow-history case is unaffected) the pill now says "EA is slow to answer…" and the summary
+  says the EA is taking longer than usual, that nothing is shown yet, that the page will fill in by itself, and
+  gives GOV.UK Check for flooding and Floodline for official warnings; real data replaces it as soon as it
+  arrives and no number is shown meanwhile. Tests: e2e `veryslow` scenario (every EA answer 9 s late) for the notice and its
+  replacement, plus an assertion in the slow-history test that the notice is not shown when the EA has answered;
+  the first fails on the old code. Follow-up idea: after the notice, offer the saved snapshot ("show the last saved
+  readings from <date>") while waiting; not done, because showing old readings as a choice needs its own labelling.
+- 2026-11-06 — daily/2026-11-06-print — Health: site live on desktop+mobile, no console errors; all 7 gauges
+  current (20 min; Bransford 50 min); no warnings in force; last deploy green, weekly refresh runs Monday;
+  PRs #22, #23 and #24 are still open and untouched (branched from main, the change avoids the files they
+  rewrite). Change: looked at what printing the Overview produces (A4, via Chromium's print renderer, live
+  data) and fixed what a person holding the paper would notice. (1) The timeline chart was cut off at the
+  right edge (a canvas keeps its screen width): on `beforeprint` the page gets an `is-printing` class that
+  gives charts a 17.5 cm width and redraws them, undone on `afterprint`. (2) Buttons, toggles, the range
+  picker, the "what does this mean" box and the demo link printed as dead controls: hidden in print.
+  (3) "Observed 21 min ago, up to date" is wrong on paper read later, and the page said nothing about when it
+  was made: a print-only stamp at the top gives the print time, the latest Diglis reading time (absolute),
+  that readings and warnings may have changed, and where the official warnings are (GOV.UK, Floodline); a
+  demo replay prints "DEMO REPLAY of February 2020: illustrative, not current conditions" and an offline
+  snapshot prints when it was taken. (4) Cards and the chart do not split across pages and the station cards
+  use three columns. Result: three A4 pages with nothing clipped (before: two pages with the chart cut off and
+  about twenty buttons and toggles); a one-page report was the backlog's hope, but the hero, KPIs, chart and seven station
+  cards do not fit one page legibly. Tests: e2e for the stamp text (live, snapshot, demo), the hidden
+  controls, the figures still printed, and the chart fitting 17.5 cm and returning to full width afterwards;
+  all three fail on the old code. The e2e restores screen media in a `finally`, because a failing print test
+  otherwise breaks every later step (found when my first regex was wrong). The first stamp version parsed
+  the snapshot time (already epoch ms) as a date string and so never printed it; the offline e2e caught it.
+  Not verified: a real browser's print dialog (Chromium's PDF output was used), other browsers' `beforeprint`.
+- 2026-11-05 — daily/2026-11-05-defer-echarts — Health: site live on desktop+mobile, no console errors; all 7
+  gauges current (21 min; Bransford 36 min, back under the 2 h flag); no warnings in force; last deploy green,
+  weekly refresh runs Monday; open PRs #22 and #23 untouched (branched from main). Change: Lighthouse
+  (4 Nov) put ECharts first in its JavaScript execution list (about 1.5 s of script evaluation under the 4x CPU
+  slowdown, in a 2.3 s total) with 101 KiB of it unused on first paint. It was a `defer` script, so it
+  ran before the page was interactive, though the first thing a visitor needs (hero, KPIs, stations) uses no
+  chart. Now `index.html` only preloads it (low priority, no execution) and `loadECharts()` in ui.js runs it
+  on demand: the Overview watches its timeline panel (only after the first data render, because before that
+  the panel sits high on the screen) and loads it 300 px before it scrolls into view, so on a phone it is not
+  run at all until the visitor scrolls, and on desktop it runs at once; Analysis, Explore and History load
+  it before they mount (navigation links start the load on hover/focus, as for Leaflet). Failures are handled
+  like Leaflet's: "Charts unavailable" with a retry on the three views, and a retry under the Overview
+  timeline while the hero and KPIs keep working. Same Lighthouse mobile run, old vs new build served locally
+  with live EA data, 3 runs each: total blocking time 520-1,240 ms → 20-80 ms; start-up JavaScript 1.8-2.5 s →
+  0.3-0.5 s; time to interactive 7.6-8.4 s → 5.9 s; unused JavaScript 301 → 25 KiB; performance score 29-41 →
+  55. With the layout-shift fix of PR #23 applied as well (not merged yet): CLS 0.015-0.019, TBT 10-60 ms,
+  score 77-78. Tests: e2e that ECharts is fetched but not run on a phone until the timeline nears (and is
+  fetched only once), that a failed library leaves hero and KPIs working with a retry on the timeline and on
+  the Analysis view, and that a direct link to a chart view still draws; the first three fail on the old code
+  (the direct-link one is a regression guard). Found while testing: starting to watch the timeline at mount
+  made it "near" before the data arrived (placeholder layout), so ECharts loaded at once on a phone; and the
+  timeline's own refresh would have cleared the library error, so that error carries its own class.
+  Found when merging this with the print change (2026-11-06): on a phone that has not scrolled to the timeline the
+  charting library is not loaded, so a print would have had an empty chart box with no explanation. The print
+  stamp now says "The timeline chart had not loaded when this was printed" and the Overview starts the chart
+  (a second print has it); e2e covers it and fails without it.
+- 2026-11-04 — daily/2026-11-04-layout-shift — Health: site live on desktop+mobile, no console errors; all 7
+  gauges reporting (22 min; Bransford 127 min, over the 2 h flag again); no warnings in force; last deploy and
+  weekly refresh green; open PR #22 untouched (branched from main). Bransford, third morning running: its
+  six days of readings have no gap over 45 minutes (568 readings; Diglis 571) but its newest reading is always
+  hours old when looked at, so the EA publishes that gauge's data late, in batches, and fills it in afterwards.
+  "Delayed" on its card and in the pill is accurate; nothing is missing. Change: a first Lighthouse run (emulated
+  mobile) scored accessibility, best practices and SEO 100 but performance 47, mostly layout shift 0.6. Measured
+  in the browser (PerformanceObserver) the hero text, gauge and KPI row are empty or short until the data arrives
+  and then push everything below them down (0.18 on a phone unthrottled, 0.09 on desktop). While the status pill
+  is "loading", CSS (`body:has(#live-status[data-mode="loading"])`) now holds the space they will fill, using
+  settled heights measured at each breakpoint and taken slightly under, plus the usual widths for the level number
+  and chips so the row wraps the same way from the start. Released as soon as the status leaves "loading".
+  Result, same Lighthouse mobile run on old vs new build (live EA data): CLS 0.60 → 0.02, performance 46-50 → 71;
+  in the browser phone 0.18 → 0.03 and desktop 0.09 → 0.003-0.023. Tests: e2e with a `late` scenario (every EA
+  answer 1.5 s late, so placeholders paint first) asserting CLS under 0.1 on a phone and 0.05 on desktop; both
+  fail on the old CSS (0.150 and 0.093). A first version of the test passed on the old CSS too (the fixtures
+  answer instantly, so no shift happened); caught by the negative control and fixed. Not covered: widths between
+  the measured ones may settle a few px differently, and `:has()` needs a 2023+ browser (older ones just keep the
+  old behaviour).
+- 2026-11-03 — daily/2026-11-03-data-completeness — Health: site live on desktop+mobile, no console
+  errors; all 7 gauges current (20 min; Bransford 65 min, back under the 2 h flag); no warnings in force;
+  rivers falling (Bewdley 0.62 m, Diglis 0.63 m); #20 and #21 are deployed and live (checked the served
+  map.js and data.js), the last deploy and the weekly refresh are green, no open PRs. Change: the drawer's
+  "Data confidence" section said only "Gauges reporting 7 of 7", which hides what Bransford has done on
+  1-2 Nov (hours without a reading). It now has a per-gauge table: readings received in the last 24 h
+  against the 96 the EA's 15-minute interval gives, and the longest gap (more than 30 min between readings;
+  "ongoing" when nothing came in after it). New pure helper `completeness()` and `fmt.duration()` in
+  data.js. Design points found while testing: (1) EA readings appear 20-40 min after their timestamp, so
+  judging up to "now" flagged every healthy gauge as "94 of 96 / 31 min (ongoing)"; the period therefore
+  ends one hour ago (the "up to date" threshold), which the 25 h of history covers exactly. (2) On first
+  load the status is already "live" once Diglis has its history while the other six are still loading, so a
+  naive table showed six gauges as "0 of 96"; caught by the live check, and the table now waits for the
+  refresh to finish. Tests: unit tests for `completeness` (healthy, normal delay, stopped feed, hole in the
+  middle, outside-window/empty, 30 vs 45 min breaks) and `fmt.duration`; e2e for the table (healthy gauges 96
+  of 96, Bransford's stopped feed 84 of 96 with an ongoing 3 h gap, axe audit of the open section in both
+  themes) and for the no-half-loaded-table case (new `primaryfirst` scenario); each fails without its code.
+  Live check against the real EA API on desktop and a phone viewport: six gauges 96 of 96, Bransford 95 of
+  96 (one missing reading, not a gap), no overflow, no errors. The "24 h" header uses a non-breaking space.
+  Codex then found two more, both confirmed: (1) a gap was only measured inside the period ending one hour
+  ago, so a gauge that had resumed in the last hour was still called "ongoing"; gaps are now found in the whole
+  series up to now, and the stretch since the newest reading counts (as "ongoing") only past the 60 min
+  "up to date" limit; (2) a gauge whose own history request failed (or came back empty) kept an old series
+  and showed as "0 of 96" with a note blaming the EA; `live.historyLoaded` now records which gauges loaded in
+  the latest refresh and the others show "not fetched this time". Unit tests for both (including the exact
+  Codex scenario) and an e2e `badgauge` scenario; each fails on the previous code.
 - 2026-11-02 — daily/2026-11-02-delayed-gauge-pill — Health: site live on desktop+mobile, no console
   errors; weekly refresh (05:17) and the deploy after it green, 6 of 7 gauges current (25 min); no
   warnings in force; rivers falling (Bewdley 0.72 m, Diglis 0.66 m). PR #20 still open, so untouched

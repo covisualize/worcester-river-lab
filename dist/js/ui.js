@@ -38,7 +38,20 @@ export function stationColor(T, index) {
 const charts = new Set();
 let resizeObserver;
 
-// Mount an ECharts instance; returns a handle with `set(option)`.
+// ECharts is a separate script that is only executed when a chart is about to be drawn (it is the largest piece of startup work
+// on a phone). Resolves at once if it is already there; a failed load can be retried by calling again.
+let echartsLoad = null;
+export function loadECharts() {
+  if (window.echarts) return Promise.resolve();
+  return (echartsLoad ??= new Promise((resolve, reject) => {
+    const el = Object.assign(document.createElement('script'), { src: 'vendor/echarts.slim.min.js' });
+    el.onload = resolve;
+    el.onerror = () => { echartsLoad = null; reject(new Error('The charting library could not be loaded')); };
+    document.head.append(el);
+  }));
+}
+
+// Mount an ECharts instance (call loadECharts() first); returns a handle with `set(option)`.
 export function mountChart(el, { onReady } = {}) {
   if (!window.echarts) {
     el.innerHTML = '<p class="empty">The charting library failed to load. Please refresh the page.</p>';
@@ -93,16 +106,43 @@ export function toast(message, kind = 'info') {
 let demoExport = null; // { id, shift } while a demo replay is showing
 export const setDemoExport = d => (demoExport = d);
 
-export function download(name, text, type = 'text/csv') {
-  const marked = demoExport && type === 'text/csv' ? markDemoCSV(text, demoExport.shift) : null;
-  if (marked) { name = `DEMO-${demoExport.id}-${name}`; text = marked; }
-  const url = URL.createObjectURL(new Blob([text], { type }));
+// Save a Blob as a file. (A demo replay marks its own files: CSVs through download() below, pictures by saying so in the picture and its name.)
+export function downloadBlob(name, blob) {
+  const url = URL.createObjectURL(blob);
   const a = Object.assign(document.createElement('a'), { href: url, download: name });
   document.body.append(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1500);
   toast(`Downloaded ${name}`, 'ok');
+}
+
+export function download(name, text, type = 'text/csv') {
+  const marked = demoExport && type === 'text/csv' ? markDemoCSV(text, demoExport.shift) : null;
+  if (marked) { name = `DEMO-${demoExport.id}-${name}`; text = marked; }
+  downloadBlob(name, new Blob([text], { type }));
+}
+
+// "Save image" for any chart (the picture is made by chart-image.js, which is fetched on the first click so it adds nothing to the
+// page's start-up). `describe()` is called once that code has arrived, and returns either a sentence saying why no picture can be made
+// or { echart, T, title, subtitle, footer, fileName }. The order matters: the chart can change while the code loads (another range, a
+// comparison switched on), so nothing about it is read until then, and from `describe()` to the chartPicture() call nothing waits (that
+// call takes the chart's pixels before its first await): the picture and its caption always come from the same drawing.
+export async function saveChartPicture(describe) {
+  let chartPicture;
+  try {
+    ({ chartPicture } = await import('./chart-image.js'));
+  } catch {
+    toast('The picture code could not be loaded. Check your connection and try again.', 'error');
+    return;
+  }
+  const spec = describe();
+  if (typeof spec === 'string') { toast(spec); return; }
+  try {
+    downloadBlob(spec.fileName, await chartPicture(spec.echart, spec));
+  } catch (e) {
+    toast(e.message || 'The picture could not be made.', 'error');
+  }
 }
 
 export async function copyLink(url = location.href) {

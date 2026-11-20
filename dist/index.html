@@ -37,6 +37,7 @@
 </header>
 
 <main id="main" tabindex="-1">
+<p class="print-stamp" id="print-stamp"></p>
 <div class="demo-banner" id="demo-banner" role="status" hidden></div>
 
 <!-- ============ OVERVIEW ============ -->
@@ -106,10 +107,16 @@
     </div>
     <div class="marks-box" id="tl-marks-box" hidden></div>
     <div class="chart chart-lg" id="tl-chart" role="img" aria-label="River level timeline"></div>
+    <details class="chart-table" id="tl-table-wrap">
+      <summary>Show the readings as a table</summary>
+      <p class="note" id="tl-table-note"></p>
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Chart readings, newest first"><table class="data-table" id="tl-table"></table></div>
+    </details>
     <div class="panel-foot">
       <p class="note" id="tl-note"></p>
       <div class="foot-actions">
         <button type="button" class="btn btn-ghost btn-small" id="tl-csv">Download CSV</button>
+        <button type="button" class="btn btn-ghost btn-small" id="tl-png" title="A picture of this chart with its dates, source and a note that it is unofficial">Save image</button>
         <button type="button" class="btn btn-ghost btn-small" id="tl-explore">Open in Explore →</button>
       </div>
     </div>
@@ -127,6 +134,10 @@
         <button type="button" data-sort="rate" aria-pressed="false">Rate of change</button>
       </div>
     </div>
+    <figure class="river-strip">
+      <div id="st-river"></div>
+      <figcaption class="note">A diagram, not a map: nothing is to scale. Each bar runs from that gauge's Environment Agency typical low (bottom) to its typical high (top), filled to the latest reading. A line above the bar means the reading is above the typical high.</figcaption>
+    </figure>
     <div class="stations" id="st-grid"></div>
   </section>
 </section>
@@ -285,6 +296,7 @@
       <div class="ex-actions">
         <button type="button" class="btn" id="ex-share">Copy share link</button>
         <button type="button" class="btn btn-ghost" id="ex-csv">Download CSV</button>
+        <button type="button" class="btn btn-ghost" id="ex-png" title="A picture of this chart with its dates, source and a note that it is unofficial">Save image</button>
       </div>
     </section>
     <div class="explore-main">
@@ -374,7 +386,8 @@
 
 <div id="toasts" class="toasts" aria-live="polite"></div>
 
-<script src="vendor/echarts.slim.min.js" defer></script>
+<!-- ECharts (218 KB gzip, ~1.5 s to run on a mid-range phone) is not run at startup: it is fetched early at low priority and executed by loadECharts() when a chart is about to be drawn. -->
+<link rel="preload" as="script" href="vendor/echarts.slim.min.js" fetchpriority="low">
 <script type="module" src="js/main.js"></script>
 </body>
 </html>

@@ -1,16 +1,45 @@
 // Overview: the "five-second" command centre for the primary gauge.
-import { $, $$, h, esc, countTo, mountChart, download, setBusy, errorBox } from '../ui.js';
+import { $, $$, h, esc, countTo, mountChart, loadECharts, download, saveChartPicture, setBusy, errorBox } from '../ui.js';
 import { timeSeriesOption, gaugeSVG, sparkline } from '../charts.js';
 import {
   change, currentRate, trend, rangePosition, rangeWords, freshness, verdict, splitWarnings, warningCount, rateSeries, breakGaps, notable, fmt, toCSV, windowed, time, gaps,
+  imageFooter, imageFileName, readingsTable, dataBasis,
 } from '../data.js';
 import { PRIMARY, STATIONS, SEVERITY, RULES } from '../config.js';
 import { describeDistance, partitionForChart, toThresholds } from '../marks.js';
 import { renderMarksManager } from '../marks-ui.js';
+import { riverStrip } from '../river-strip.js';
 
 export function createOverview(ctx) {
   const { store, live, marks } = ctx;
-  let chart, sortKey = 'river', reqId = 0, lastWindow = null;
+  let chart, sortKey = 'river', reqId = 0, lastWindow = null, lastDraw = null; // lastDraw: what the timeline shows, for its saved picture
+
+  // The timeline chart needs ECharts, which is not run at startup (it is the biggest piece of start-up work on a phone). It is loaded
+  // when the timeline panel is about to scroll into view, which on a desktop screen is straight away.
+  function startChart() {
+    if (chart) return;
+    $('#ov-timeline .lib-error')?.remove();
+    loadECharts().then(() => {
+      if (chart) return; // another caller (the scroll watcher, or a print) got here first
+      chart = mountChart($('#tl-chart'));
+      if (lastWindow) drawTimeline();
+    }, e => {
+      const box = errorBox(e.message, startChart);
+      box.classList.add('lib-error'); // kept apart from the data errors, which drawTimeline() clears when it refreshes
+      $('#tl-chart').after(box);
+    });
+  }
+
+  // Watched only once the page has its data: before that the panel sits high on the screen, because the content above it is still a placeholder.
+  let watching = false;
+  function watchTimeline() {
+    if (watching) return;
+    watching = true;
+    if ('IntersectionObserver' in window) {
+      const io = new IntersectionObserver(es => { if (es.some(x => x.isIntersecting)) { io.disconnect(); startChart(); } }, { rootMargin: '300px' });
+      io.observe($('#ov-timeline'));
+    } else startChart();
+  }
 
   function openMarksBox(focusInput = false) {
     const box = $('#tl-marks-box');
@@ -22,7 +51,6 @@ export function createOverview(ctx) {
   }
 
   function mount() {
-    chart = mountChart($('#tl-chart'));
     ctx.rangeButtons($('#tl-range'), () => store.get().range, range => {
       if (range === 'custom') { $('#tl-custom').hidden = false; $('#tl-custom input[name=from]').focus(); return; }
       store.set({ range });
@@ -39,6 +67,8 @@ export function createOverview(ctx) {
       download(`diglis-${store.get().range}.csv`, toCSV(['timestamp_utc', 'uk_local_time', 'station', 'level_m_asd'],
         lastWindow.flatMap(s => s.raw.map(([t, v]) => [new Date(t).toISOString(), fmt.full(t), s.name, v]))));
     };
+    $('#tl-table-wrap').addEventListener('toggle', drawTable);
+    $('#tl-png').onclick = saveTimelineImage;
     $('#tl-explore').onclick = () => ctx.go('explore', { compare: $('#tl-upstream').checked ? ['2001', PRIMARY] : [PRIMARY] });
     $('#ov-warn-open').onclick = () => ctx.openIntel();
     $$('#view-overview [data-go]').forEach(a => (a.onclick = e => { e.preventDefault(); ctx.go(a.dataset.go); }));
@@ -233,6 +263,40 @@ export function createOverview(ctx) {
 
   /* ---------- Timeline ---------- */
 
+  // "Save image": the chart as a PNG that carries its own title, period, source and date (see chart-image.js and saveChartPicture in ui.js).
+  function saveTimelineImage() {
+    return saveChartPicture(() => {
+      const main = lastWindow?.find(x => x.id === PRIMARY);
+      if (!chart?.chart || !main || !lastDraw) return 'The chart is not ready yet. Try again in a moment.';
+      if (!main.raw.length) return 'There are no readings in this chart to save a picture of.'; // e.g. an offline snapshot that is older than the range
+      const st = live.status, now = Date.now(), name = live.station(PRIMARY)?.label || 'Diglis';
+      const { label, compare, range } = lastDraw, end = main.raw.at(-1)[0];
+      return {
+        echart: chart.chart, T: ctx.T,
+        title: compare ? `River level change since the start of the period: Bewdley (upstream) and ${name}` : `River Severn at ${name}, Worcester`,
+        subtitle: `${label}, ${fmt.dateTime(main.raw[0][0])} to ${fmt.dateTime(end)} (${fmt.zone(end)}) · ${compare ? 'change in cm' : 'metres above station datum'} · UK time`,
+        footer: imageFooter({ mode: st.mode, snapshotAt: st.snapshotAt, last: live.latestOf(PRIMARY), now }),
+        fileName: imageFileName({ range, mode: st.mode, now }),
+      };
+    });
+  }
+
+  // "Show the readings as a table": the real readings behind the chart, for people who cannot see it (a screen reader gets only its summary)
+  // or would rather read than hover. Built when the section is open, and again whenever the chart is redrawn while it is.
+  const TABLE_ROWS = 96;
+  function drawTable() {
+    if (!$('#tl-table-wrap').open) return;
+    const series = lastWindow || [], st = live.status;
+    const { rows, total } = readingsTable(series, TABLE_ROWS);
+    if (!rows.length) { $('#tl-table').innerHTML = ''; $('#tl-table-note').textContent = 'There are no readings in this chart.'; return; }
+    const unit = series.length > 1 ? 'times with a reading' : 'readings'; // two gauges are joined by time, so the rows are times, not one gauge's readings
+    const basis = st.mode === 'demo' || st.mode === 'snapshot' ? ` ${dataBasis({ mode: st.mode, snapshotAt: st.snapshotAt, last: live.latestOf(PRIMARY) })}` : '';
+    $('#tl-table-note').textContent = `${lastDraw?.label || ''}: ${total > rows.length ? `the latest ${rows.length} of ${total} ${unit} (Download CSV has all of them)` : `all ${total} ${unit}`}, in UK time. Levels are metres above each gauge's own station datum${lastDraw?.compare ? ', not the change in cm that the chart shows' : ''}. A dash means that gauge has no reading at that time.${basis}`;
+    $('#tl-table').innerHTML = `<caption class="sr-only">Readings behind the river level timeline, newest first</caption>
+      <thead><tr><th scope="col">Time</th>${series.map(x => `<th scope="col" class="n">${esc(x.name)} (m)</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(r => `<tr><th scope="row">${fmt.dateTime(r.t)} ${fmt.zone(r.t)}</th>${r.values.map(v => (v == null ? '<td class="n"><span class="sr-only">no reading</span><span aria-hidden="true">—</span></td>' : `<td class="n">${v.toFixed(3)}</td>`)).join('')}</tr>`).join('')}</tbody>`;
+  }
+
   async function drawTimeline() {
     const id = ++reqId;
     const s = store.get();
@@ -240,7 +304,7 @@ export function createOverview(ctx) {
     const compare = $('#tl-upstream').checked;
     const ids = compare ? ['2001', PRIMARY] : [PRIMARY];
     setBusy($('#tl-chart'), true);
-    $('#ov-timeline .state-error')?.remove();
+    $('#ov-timeline .state-error:not(.lib-error)')?.remove();
     try {
       const results = await Promise.all(ids.map(i => live.window(i, from, to)));
       if (id !== reqId) return;
@@ -251,9 +315,12 @@ export function createOverview(ctx) {
         return { id: sid, name: st.label, raw, color: ctx.colorOf(sid), data: breakGaps(ctx.transformFor(raw, metric, st)), highlight: sid === PRIMARY };
       });
       lastWindow = series;
+      lastDraw = { label, compare, range: s.range };
+      drawTable(); // from the data, not the chart: it works while the charting library is still loading, or has failed, or the chart is empty
       const main = series.find(x => x.id === PRIMARY);
       const sc = live.primary()?.scale;
-      if (!main.raw.length) { chart.set({}); $('#tl-note').textContent = `No readings for ${label}.`; return; }
+      if (!main.raw.length) { chart?.set({}); $('#tl-note').textContent = `No readings for ${label}.`; return; }
+      if (!chart) return; // the library is still to load; startChart() draws once it has
       const showBand = $('#tl-band').checked && !compare && sc?.low != null;
       const allMarks = compare ? [] : marks.list(PRIMARY);
       const showAll = $('#tl-marks-all').checked;
@@ -294,6 +361,9 @@ export function createOverview(ctx) {
       const rate = currentRate(series);
       return { cfg, st, series, last, rate, pos: rangePosition(last?.[1], st?.scale), c24: change(series, 24), fr: freshness(last?.[0]), order: i };
     });
+    // The diagram is always in river order, whatever the cards are sorted by.
+    const strip = rows.map(r => ({ id: r.cfg.id, label: r.st?.label || r.cfg.label, value: r.last?.[1] ?? null, pos: r.pos, trend: trend(r.rate), primary: !!r.cfg.primary, delayed: r.fr.key === 'stale', note: r.st?.error }));
+    $('#st-river').innerHTML = riverStrip(strip, 'wide') + riverStrip(strip, 'tall');
     const sorters = { river: (a, b) => a.order - b.order, range: (a, b) => (b.pos.pct ?? -1e9) - (a.pos.pct ?? -1e9), rate: (a, b) => Math.abs(b.rate ?? 0) - Math.abs(a.rate ?? 0) };
     rows.sort(sorters[sortKey]);
     $('#st-grid').innerHTML = rows.map(r => {
@@ -317,7 +387,8 @@ export function createOverview(ctx) {
 
   return {
     mount,
-    render() { drawHero(); drawKPIs(); drawStations(); drawTimeline(); },
+    ensureChart: startChart, // for a print, which cannot wait for the scroll watcher
+    render() { drawHero(); drawKPIs(); drawStations(); drawTimeline(); watchTimeline(); },
     onState(s, prev) { if (s.range !== prev.range || s.from !== prev.from || s.to !== prev.to) { ctx.syncRangeButtons(); drawTimeline(); } },
     onData() { drawHero(); drawKPIs(); drawStations(); drawTimeline(); },
     onMarks(sid) { if (!sid || sid === PRIMARY) { drawHero(); drawTimeline(); } },

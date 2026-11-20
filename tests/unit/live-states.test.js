@@ -111,6 +111,29 @@ test('a later successful refresh clears the partial state', async () => {
   assert.equal(gaugesWithReadings(), 7);
 });
 
+test('one gauge\'s failed history is recorded, so nothing downstream treats its old (or missing) series as this refresh\'s', async () => {
+  installEA({ fail: url => READINGS.test(url) && url.includes('/measures/2086-') && 'network' });
+  live = createLive();
+  await live.refresh();
+  assert.equal(live.status.mode, 'live');
+  assert.ok(!live.status.partial, 'six of seven answered, so this is an ordinary live refresh');
+  assert.equal(gaugesWithReadings(), 6);
+  assert.deepEqual([...live.historyLoaded].sort(), ['2001', '2029', '2032', '2085', '2616', '2642']);
+  assert.ok(!live.historyLoaded.has('2086'));
+  // A gauge with an older series that now fails is recorded the same way (the series itself is left alone).
+  live.series['2086'] = [[Date.now() - 20 * 3600e3, 0.5]];
+  api.resetForTests();
+  installEA({ fail: url => READINGS.test(url) && url.includes('/measures/2086-') && 'network' });
+  await live.refresh();
+  assert.ok(!live.historyLoaded.has('2086'), 'an old series does not count as loaded');
+  assert.equal(live.series['2086'].length, 1, 'and is not discarded');
+  // The next refresh that gets everything records all seven.
+  api.resetForTests();
+  installEA();
+  await live.refresh();
+  assert.equal(live.historyLoaded.size, 7);
+});
+
 test('failed warnings feed leaves the gauges live and says so, never claiming "no warnings"', async () => {
   installEA({ fail: u => /\/id\/floods\?/.test(u) && 500 });
   live = createLive();

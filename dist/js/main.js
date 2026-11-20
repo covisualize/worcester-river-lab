@@ -1,10 +1,10 @@
 // Application bootstrap: state, routing, shared helpers and status UI.
-import { $, $$, esc, setDemoExport, tokens, reducedMotion, toggleFullscreen, toast, resizeAll, errorBox } from './ui.js';
+import { $, $$, esc, setDemoExport, tokens, reducedMotion, toggleFullscreen, toast, resizeAll, errorBox, loadECharts } from './ui.js';
 import { createStore, decode, VIEWS } from './store.js';
 import { createLive } from './live.js';
 import { createMarksStore } from './marks.js';
-import { STATIONS, RANGES } from './config.js';
-import { transform, lttb, fmt, freshness, delayedGauges, ukDayStart, ukDateInput, time } from './data.js';
+import { STATIONS, RANGES, PRIMARY, FLOODLINE } from './config.js';
+import { transform, lttb, fmt, freshness, delayedGauges, ukDayStart, ukDateInput, time, dataBasis, MAY_HAVE_CHANGED } from './data.js';
 import { createOverview } from './views/overview.js';
 import { createMapView } from './views/map.js';
 import { createAnalysis } from './views/analysis.js';
@@ -101,6 +101,8 @@ let pendingSection = null;
 // Leaflet (~48 KB gzip with its stylesheet) is only used by Map and Explore, so it loads on first
 // use instead of with every page. Links to those views start the download on hover or focus.
 const NEEDS_LEAFLET = new Set(['map', 'explore']);
+// These views create their charts as they mount, so they wait for ECharts (the Overview draws its timeline later, when it scrolls near).
+const NEEDS_ECHARTS = new Set(['analysis', 'explore', 'history']);
 // The script and the stylesheet are tracked separately, so a retry fetches only the one that
 // failed (a map with its script but without Leaflet's CSS would mount broken).
 const leafletParts = { js: null, css: null };
@@ -122,6 +124,9 @@ const loadLeaflet = () => Promise.all([loadLeafletPart('css'), loadLeafletPart('
 $$('[data-nav="map"], [data-nav="explore"], [data-go="map"], [data-go="explore"]').forEach(el => {
   for (const ev of ['pointerenter', 'focus']) el.addEventListener(ev, () => loadLeaflet().catch(() => {}), { once: true });
 });
+$$('[data-nav="analysis"], [data-nav="explore"], [data-nav="history"], [data-go="analysis"], [data-go="explore"], [data-go="history"]').forEach(el => {
+  for (const ev of ['pointerenter', 'focus']) el.addEventListener(ev, () => loadECharts().catch(() => {}), { once: true });
+});
 
 function refreshView(v) {
   if (!mounted.has(v)) return; // e.g. Map while its library is still loading
@@ -136,12 +141,12 @@ async function show(view) {
   $$('[data-nav]').forEach(b => (b.dataset.nav === view ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current')));
   document.title = `${{ overview: 'Live overview', map: 'River map', analysis: 'Analysis', explore: 'Explore', history: 'History' }[view]} · Worcester River`;
   const v = views[view];
-  if (NEEDS_LEAFLET.has(view) && !mounted.has(view)) {
+  if ((NEEDS_LEAFLET.has(view) || NEEDS_ECHARTS.has(view)) && !mounted.has(view)) {
     $(`#view-${view} .lib-error`)?.remove();
-    try { await loadLeaflet(); } catch (e) {
+    try { await Promise.all([NEEDS_LEAFLET.has(view) && loadLeaflet(), NEEDS_ECHARTS.has(view) && loadECharts()]); } catch (e) {
       const box = errorBox(e.message, () => show(view));
       box.classList.add('lib-error');
-      box.querySelector('strong').textContent = 'Map unavailable.';
+      box.querySelector('strong').textContent = /chart/i.test(e.message) ? 'Charts unavailable.' : 'Map unavailable.';
       $(`#view-${view}`).prepend(box);
       return;
     }
@@ -169,6 +174,11 @@ addEventListener('popstate', () => {
 
 /* ---------- Status pill ---------- */
 
+// The EA sometimes takes 10 s or more to answer. Until it has said anything at all, the page can only show placeholders, which look the
+// same at 11 s as at 1 s; after a few seconds it says that the wait is the EA's (set once, below, and replaced as soon as data arrives).
+let slowWait = false;
+const SLOW_AFTER_MS = 6000;
+
 function drawStatus(st) {
   const pill = $('#live-status');
   const last = live.latestOf('2085');
@@ -176,7 +186,7 @@ function drawStatus(st) {
   // Other gauges the EA has not updated for a while (Diglis is reported above on its own).
   const delayed = st.mode === 'live' ? delayedGauges(live.stations, id => live.latestOf(id), Date.now(), '2085') : [];
   let text, mode = st.mode;
-  if (st.refreshing && !st.updatedAt) text = st.metadata ? 'Loading readings…' : 'Connecting to EA…';
+  if (st.refreshing && !st.updatedAt) text = st.metadata ? 'Loading readings…' : slowWait ? 'EA is slow to answer…' : 'Connecting to EA…';
   else if (st.offline) { text = 'Offline'; mode = 'error'; }
   else if (st.mode === 'live') { text = `Live · ${fmt.time(st.updatedAt)}`; if (fr.key === 'stale') { mode = 'stale'; text = `Live · reading ${fmt.age(fr.ageMin)}`; } else if (delayed.length) text += ` · ${delayed.length} gauge${delayed.length > 1 ? 's' : ''} delayed`; }
   else if (st.mode === 'stale') text = 'Update failed · cached';
@@ -233,6 +243,23 @@ document.addEventListener('keydown', e => {
 });
 matchMedia('(prefers-reduced-motion: reduce)').addEventListener?.('change', e => { ctx.animate = !e.matches; });
 
+/* ---------- Printing ---------- */
+
+// A printout is read later, when "21 min ago" and "Up to date" are no longer true, so it says when it was made, which reading it
+// shows, and where the official warnings are (the wording is shared with the saved chart picture: see data.js).
+function stampPrint() {
+  const st = live.status;
+  const basis = dataBasis({ mode: st.mode, snapshotAt: st.snapshotAt, last: live.latestOf(PRIMARY) });
+  // The Overview timeline only loads its charting library when it nears the screen (a phone that has not scrolled to it), and a print
+  // cannot wait for that: say so rather than print an empty box, and start the load so printing again works.
+  const chartMissing = store.get().view === 'overview' && !$('#tl-chart canvas');
+  if (chartMissing) views.overview.ensureChart();
+  $('#print-stamp').textContent = `Worcester River Lab (unofficial summary of Environment Agency data) · printed ${fmt.full(Date.now())}. ${basis}${chartMissing ? ' The timeline chart had not loaded when this was printed.' : ''} ${MAY_HAVE_CHANGED}`;
+}
+// The charts are drawn for the screen's width; draw them again at the page's width before the browser lays the page out, and back afterwards.
+addEventListener('beforeprint', () => { stampPrint(); document.documentElement.classList.add('is-printing'); resizeAll(); });
+addEventListener('afterprint', () => { document.documentElement.classList.remove('is-printing'); resizeAll(); });
+
 intel.mount();
 live.on('status', st => { drawStatus(st); drawDemo(st); });
 live.on('update', () => {
@@ -248,6 +275,13 @@ const first = store.get();
 show(first.view);
 if (first.intel) intel.open();
 live.start();
+setTimeout(() => {
+  const st = live.status;
+  if (st.mode !== 'loading' || st.metadata || st.updatedAt) return; // data (or an error) has arrived: nothing to explain
+  slowWait = true;
+  drawStatus(st);
+  $('#ov-summary').textContent = `The Environment Agency is taking longer than usual to answer, so there is nothing to show yet. This page keeps waiting and will fill in by itself. For official flood warnings meanwhile, use GOV.UK Check for flooding or call Floodline ${FLOODLINE}.`;
+}, SLOW_AFTER_MS);
 
 // Expose a tiny debug handle for the end-to-end smoke test.
 window.__wr = { store, live, ctx, marks };
